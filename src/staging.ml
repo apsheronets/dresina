@@ -133,7 +133,7 @@ let do_stage ?(pkgs = []) ~mlt ~pre ~post ~fname () =
   output_string out_ch call_generation;
   close_out out_ch;
   let byt = Filename.chop_suffix tmpfn ".ml" ^ ".byte" in
-  let errc = compile_byt ~pkgs tmpfn byt in
+  let errc = compile_ml_to_byt ~pkgs tmpfn byt in
   if errc <> 0
   then failwith "stage: compilation error; source left in %s" tmpfn
   else

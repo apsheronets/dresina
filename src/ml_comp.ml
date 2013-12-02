@@ -30,7 +30,7 @@ let packages_dir pkgs =
   then ""
   else "-package " ^ Filename.quote (String.concat "," pkgs)
 
-let compile_byt ?(pkgs = []) ml byt =
+let compile_ml_to_byt ?(pkgs = []) ml byt =
   let pkgs = "threads" :: pkgs in
   let cmd = Printf.sprintf
       "ocamlfind ocamlc -g -w A -thread -linkpkg %s %s -o %s"
