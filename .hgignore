@@ -1,0 +1,4 @@
+^_build/
+\.(byte|native)$
+^setup\.(log|data)$
+^proj-build/((.*\.cm(i|o|a|xa|xs))|\.build_digests)$

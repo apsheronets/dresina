@@ -1,0 +1,3 @@
+% create_table test
+% column int_attr integer
+% column str_attr string

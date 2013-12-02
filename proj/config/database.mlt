@@ -1,0 +1,5 @@
+% begin connection pg
+  ~user: "dresina"
+  ~host: "localhost"
+  ~dbname: "dresina_db"
+% end

@@ -1,0 +1,4 @@
+% get /say/hello say hello
+% get /say/goodbye say goodbye
+
+% get /shit/myint:int/fuck/mystring:string contr meth
