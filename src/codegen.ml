@@ -236,6 +236,22 @@ module Expr
            )
            branches
         )
+
+    let let_in patt binding expr =
+      sprintf "let %s =\n%s\nin\n%s"
+        patt (indent 2 binding) expr
+
+    let seq expr_list =
+      match expr_list with
+      | [] -> invalid_arg "Codegen.Expr.seq: empty sequence"
+      | e :: [] -> e
+      | _ ->
+          sprintf "begin\n%s\nend"
+            (indent 2 & String.concat ";\n" expr_list)
+
+    let for_ var_ from_ to_ body_seq =
+      sprintf "for %s = %s to %s do\n%s\ndone"
+        (lid var_) from_ to_ (indent 2 & String.concat ";\n" body_seq)
   end
 
 module Struc
@@ -282,6 +298,14 @@ module Record
       let body = Buffer.contents buf in
       sprintf "type %s =\n%s;;\n" rname body
 
+  end
+
+(* not "Array" to avoid overriding of Array.{get,set} when opening Codegen *)
+module Arr
+ =
+  struct
+    let get arr_expr index =
+      sprintf "%s.(%s)" arr_expr index
   end
 
 
