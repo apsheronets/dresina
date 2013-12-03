@@ -1,4 +1,4 @@
-% get /say/hello say hello
-% get /say/goodbye say goodbye
+% get /say/hello Say_controller hello
+% get /say/goodbye Say_controller goodbye
 
-% get /shit/myint:int/fuck/mystring:string contr meth
+% get /myint/int_arg:int/mystring/string_arg:string Test_controller test_action

@@ -1,10 +1,30 @@
 open Cd_All
 open Strings.Latin1
 
+type binding =
+  { arg_ident : string
+      (* identifier with bound string (argument name to be passed to
+         controller) *)
+  ; bound_ident : string
+      (* ml code with bound value (__uri_patt_N) *)
+  ; from_string : string
+      (* ml code that translates __uri_patt to ml value *)
+  ; to_string : string -> string
+      (* fun expr_ml_code -> code returning string to be glued into path/url
+         for this component
+       *)
+  }
+
+type action =
+  { cntr_name : string
+  ; action_name : string
+  ; bindings : binding list
+  }
+
 type level =
 | Bind of string (* ident *) * level (* below *)
 | Map of (string * level) list
-| Action of string (* code *)
+| Action of action
 
 type context = level ref
 
@@ -12,18 +32,26 @@ type context = level ref
 
 let no_route_ml = "raise Not_found"
 
-(* (identifier with bound string, ml code with bound value) *)
 let binding ~level ~ty ~id =
   let b = Expr.lid ("__uri_patt_" ^ string_of_int level) in
-  ( id
-  , b
-  , match ty with
+  let (from_string, to_string) =
+    match ty with
     | "int" ->
-        "(try int_of_string " ^ b ^ " with Failure _ -> " ^ no_route_ml ^ ")"
-    | "string" -> b
+        ( "(try int_of_string " ^ b ^ " with Failure _ -> " ^ no_route_ml ^ ")"
+        , fun ident -> "string_of_int " ^ ident
+        )
+    | "string" ->
+        ( b
+        , fun ident -> ident
+        )
     | _ -> failwith
         "routes: type %S is not supported in uri pattern" ty
-  )
+  in
+  { arg_ident = id
+  ; bound_ident = b
+  ; from_string = from_string
+  ; to_string = to_string
+  }
 
 let meta_segs path =
   List.mapi
@@ -44,13 +72,13 @@ let rec bindings_of_mpath ?(acc=[]) ?(level=0) mpath =
   | h :: t ->
       match h with
       | `Fixed _ -> bindings_of_mpath ~acc ~level:(level + 1) t
-      | `Binding (arg_ident, bind_ident, ml) ->
-          if List.Assoc.mem ~keq arg_ident acc
+      | `Binding b ->
+          if List.Assoc.mem ~keq b.arg_ident acc
           then failwith
             "routes: binding %S appears more than one time in uri pattern"
-            arg_ident
+            b.arg_ident
           else
-            let acc = List.Assoc.add arg_ident (arg_ident, bind_ident, ml) acc
+            let acc = List.Assoc.add b.arg_ident b acc
             in
             bindings_of_mpath ~acc ~level:(level + 1) t
 
@@ -80,8 +108,8 @@ let rec add_handler level mpath action =
                  | [] -> Action action
                  | `Fixed s :: t ->
                      Map [(s, loop t)]
-                 | `Binding (_arg_ident, bind_ident, _ty) :: t ->
-                     Bind (bind_ident, loop t)
+                 | `Binding b :: t ->
+                     Bind (b.bound_ident, loop t)
                in
                  loop t
              in
@@ -108,14 +136,12 @@ let get3 uri_patt_str cntr_name cntr_meth context =
       else
         let path = String.split ( ( = ) '/' ) uri_patt.path in
         let mpath = meta_segs path in
-        let actfunc = String.capitalize cntr_name ^ "." ^ cntr_meth in
         let bindings = bindings_of_mpath mpath in
-        let action = actfunc ^ String.concat "" begin
-            List.map
-              (fun (arg_ident, _bind_ident, ml) ->
-                 Printf.sprintf " ~%s:(%s)" arg_ident ml
-              )
-              bindings
-          end in
+        let action =
+          { cntr_name = uid ~place:"Controller name" cntr_name
+          ; action_name = Expr.lid cntr_meth
+          ; bindings = bindings
+          }
+        in
         context := add_handler !context mpath action
           

@@ -12,7 +12,7 @@ let copy_ml_to_channel ~out_ch fname =
     fname
     (fun in_ch ->
        output_string out_ch & Cg.line_directive fname 1;
-       Filew.copy_channels in_ch out_ch
+       Filew.copy_channels ~bufsz:60000 in_ch out_ch
     )
 
 let copy_mls_to_channel ~out_ch ~files =

@@ -1,8 +1,11 @@
+open Cd_All
+open Strings.Latin1
 open Staging
 open Ml_comp
 
 let dbpkgs = ["amall.dbi"]
 let webpkgs = ["amall"]
+let allpkgs = List.uniq ~eq:String.eq (dbpkgs @ webpkgs)
 
 let () = stage
   ~pre:["tpl/internal/ocaml_type_gen_pre.ml"]
@@ -35,13 +38,13 @@ let () = stage_paths
 let () = compile_byt ~pkgs:dbpkgs "proj-build/config/database.ml"
 *)
 
-let () = stage_paths
+let () = stage_multi_paths
   ~pkgs:webpkgs
   ~rel_path:"config"
   ~pre:["routes_pre.ml"]
   ~post:["routes_post.ml"]
   ~mlt:"routes.mlt"
-  "routes.ml"
+  [("routes", "route.ml"); ("routing", "routing.ml")]
 
 let () = Make.do_make ()
 

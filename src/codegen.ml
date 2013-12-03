@@ -280,10 +280,17 @@ module Struc
         (String.concat " " args)
         (indent 2 body)
 
-    let module_ name body =
+    let items body_items =
+      String.concat "" &
+      List.map (fun item -> item ^ "\n;;\n") body_items
+
+    let module_ name body_items =
       check_uid ~place:"Codegen.Struc.module_" name;
-      sprintf "module %s = struct\n%s\nend;;"
-        name (indent 2 body)
+      sprintf "module %s = struct\n%send"
+        name
+        (indent 2 &
+         items body_items
+        )
 
   end
 

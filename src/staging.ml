@@ -224,15 +224,18 @@ let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
 let do_stage ?(pkgs = []) ~mlt ~pre ~post ~fname =
   do_stage_multi ~pkgs ~mlt ~pre ~post ~outs:[("", fname)]
 
+let stage_multi ?(pkgs = []) ~mlt ~pre ~post targets =
+  Make.make (List.map snd targets) (mlt :: (pre @ post)) &
+  do_stage_multi ~pkgs ~mlt ~pre ~post ~outs:targets
+
 let stage ?(pkgs = []) ~mlt ~pre ~post target =
-  Make.make1 target (mlt :: (pre @ post)) &
-  do_stage ~pkgs ~mlt ~pre ~post ~fname:target
+  stage_multi ~pkgs ~mlt ~pre ~post [("", target)]
 
 let has_slash p =
   Cg.string_index_opt p '/' <> None
 
 (* calls [stage] with common conventions on files paths *)
-let stage_paths ?(pkgs = []) ~rel_path ~mlt ~pre ~post target =
+let stage_multi_paths ?(pkgs = []) ~rel_path ~mlt ~pre ~post targets =
   let ( / ) = Filename.concat in
   let mlt = "proj" / rel_path / mlt
   and (pre, post) = Tuple2.map_mono
@@ -244,5 +247,15 @@ let stage_paths ?(pkgs = []) ~rel_path ~mlt ~pre ~post target =
        )
     )
     (pre, post)
-  and target = "proj-build" / rel_path / target in
-  stage ~pkgs ~mlt ~pre ~post target
+  and targets =
+    List.map
+      (fun (output_suffix, target) ->
+         (output_suffix, "proj-build" / rel_path / target)
+      )
+      targets
+  in
+  stage_multi ~pkgs ~mlt ~pre ~post targets
+
+let stage_paths ?(pkgs = []) ~rel_path ~mlt ~pre ~post target =
+  stage_multi_paths ~pkgs ~rel_path ~mlt ~pre ~post
+    [("", target)]
