@@ -55,6 +55,20 @@ let save_digests () =
 
 (********************************)
 
+let rec create_dirs_for_file fn =
+  let dir = Filename.dirname fn in
+  if Sys.file_exists dir
+  then begin
+    if Sys.is_directory dir
+    then ()
+    else failwith "%S expected to be directory, but it is a file" dir
+  end else begin
+    create_dirs_for_file dir;
+    mdbg "creating directory %S" dir;
+    Unix.mkdir dir 0o777
+  end
+
+
 type modified =
 | M_not_modified
 | M_rebuilt
@@ -67,12 +81,16 @@ type rule =
   { deps : string list
   ; build_func : unit -> unit
   ; status : status ref
+  ; create_dirs : unit -> unit
   }
 
 let rules = Hashtbl.create 17
 
 let make targets deps func =
   let status = ref Not_checked in
+  let create_dirs () =
+    List.iter create_dirs_for_file targets
+  in
   List.iter
     begin fun target ->
       if Hashtbl.mem rules target
@@ -86,6 +104,7 @@ let make targets deps func =
           { deps = deps
           ; build_func = func
           ; status = status
+          ; create_dirs = create_dirs
           }
     end
     targets
@@ -124,19 +143,6 @@ type rebuild =
 | Rebuild_needed
 | No_rebuild
 
-let rec create_dirs_for_file fn =
-  let dir = Filename.dirname fn in
-  if Sys.file_exists dir
-  then begin
-    if Sys.is_directory dir
-    then ()
-    else failwith "%S expected to be directory, but it is a file" dir
-  end else begin
-    create_dirs_for_file dir;
-    mdbg "creating directory %S" dir;
-    Unix.mkdir dir 0o777
-  end
-
 let rec build target =
   match hashtbl_find_opt rules target with
   | None ->
@@ -173,8 +179,16 @@ let rec build target =
               begin
                 if rebuild_needed
                 then begin
-                  create_dirs_for_file target;
-                  r.build_func ();
+                  r.create_dirs ();
+                  begin
+                    try
+                      r.build_func ()
+                    with
+                    | e -> failwith "Make: failed.  Target: %s, deps: %s, \
+                                     exception: %s"
+                        target (String.concat ", " r.deps)
+                        (Printexc.to_string e)
+                  end;
                   r.status := Actual M_rebuilt
                 end else begin
                   r.status := Actual M_not_modified
