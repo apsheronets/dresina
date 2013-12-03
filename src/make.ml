@@ -71,19 +71,26 @@ type rule =
 
 let rules = Hashtbl.create 17
 
-let make target deps func =
-  if Hashtbl.mem rules target
-  then failwith "Make: rule for %S already exists" target
-  else
-    mdbg "Make: registering target %S with dependencies [%s]"
-      target (String.concat "; " & List.map (Printf.sprintf "%S") deps);
-    Hashtbl.add
-      rules
-      target
-      { deps = deps
-      ; build_func = func
-      ; status = ref Not_checked
-      }
+let make targets deps func =
+  let status = ref Not_checked in
+  List.iter
+    begin fun target ->
+      if Hashtbl.mem rules target
+      then failwith "Make: rule for %S already exists" target
+      else
+        mdbg "Make: registering target %S with dependencies [%s]"
+          target (String.concat "; " & List.map (Printf.sprintf "%S") deps);
+        Hashtbl.add
+          rules
+          target
+          { deps = deps
+          ; build_func = func
+          ; status = status
+          }
+    end
+    targets
+
+let make1 target deps func = make [target] deps func
 
 (**)
 

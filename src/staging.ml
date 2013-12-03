@@ -152,7 +152,7 @@ let do_stage ?(pkgs = []) ~mlt ~pre ~post ~fname () =
 
 
 let stage ?(pkgs = []) ~mlt ~pre ~post target =
-  Make.make target (mlt :: (pre @ post)) &
+  Make.make1 target (mlt :: (pre @ post)) &
   do_stage ~pkgs ~mlt ~pre ~post ~fname:target
 
 let has_slash p =
