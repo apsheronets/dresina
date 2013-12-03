@@ -7,16 +7,16 @@ let sys_command cmd =
   dbg "Sys.command: %s" cmd;
   Sys.command cmd
 
+let copy_ml_to_channel ~out_ch fname =
+  Filew.with_file_in_bin
+    fname
+    (fun in_ch ->
+       output_string out_ch & Cg.line_directive fname 1;
+       Filew.copy_channels in_ch out_ch
+    )
+
 let copy_mls_to_channel ~out_ch ~files =
-  let copy_ml fname =
-    Filew.with_file_in_bin
-      fname
-      (fun in_ch ->
-         output_string out_ch & Cg.line_directive fname 1;
-         Filew.copy_channels in_ch out_ch
-      )
-  in
-  List.iter copy_ml files
+  List.iter (copy_ml_to_channel ~out_ch) files
 
 let copy_mls_to_ml ~out ~files =
   Filew.with_file_out_bin
