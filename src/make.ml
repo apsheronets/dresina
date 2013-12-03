@@ -66,7 +66,7 @@ type status =
 type rule =
   { deps : string list
   ; build_func : unit -> unit
-  ; mutable status : status
+  ; status : status ref
   }
 
 let rules = Hashtbl.create 17
@@ -82,7 +82,7 @@ let make target deps func =
       target
       { deps = deps
       ; build_func = func
-      ; status = Not_checked
+      ; status = ref Not_checked
       }
 
 (**)
@@ -142,8 +142,8 @@ let rec build target =
   | Some r ->
       begin
         mdbg "building %S, it's a target, actual? = %b" target
-          (r.status <> Not_checked);
-        match r.status with
+          (!(r.status) <> Not_checked);
+        match !(r.status) with
         | Actual M_not_modified -> No_rebuild
         | Actual M_rebuilt -> Rebuild_needed
         | Not_checked ->
@@ -168,9 +168,9 @@ let rec build target =
                 then begin
                   create_dirs_for_file target;
                   r.build_func ();
-                  r.status <- Actual M_rebuilt
+                  r.status := Actual M_rebuilt
                 end else begin
-                  r.status <- Actual M_not_modified
+                  r.status := Actual M_not_modified
                 end
               end;
               if rebuild_needed
@@ -183,7 +183,7 @@ let do_make () =
   ( Hashtbl.iter
       (fun target _rule -> ignore (build target))
       rules
-  ; Hashtbl.iter (fun _target r -> assert (r.status <> Not_checked)) rules
+  ; Hashtbl.iter (fun _target r -> assert (!(r.status) <> Not_checked)) rules
   ; save_digests ()
   )
 
