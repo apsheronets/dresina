@@ -99,57 +99,116 @@ let output_mlt ~out_ch list_item_codes : unit =
     "mlt"
     (Cg.Expr.list list_item_codes)
 
-let prepare_output =
+let out_ch_ident ~i =
+  Cg.Expr.lid & sprintf "out_ch_%i" i
+
+let prepare_output outs =
   Cg.line_directive "_prepare_output_" 0 ^
-  "let out_fn = Sys.argv.(1);;\n\
-   let out_ch = open_out_bin out_fn;;\n\
-   let out = output_string out_ch;;\n"
+  String.concat "" begin
+    List.mapi begin fun i (out_suffix, _out_fname) ->
+        let i = i + 1 in
+        let out_ident =
+          if out_suffix = ""
+          then "out"
+          else Cg.Expr.lid ("out_" ^ out_suffix) in
+        let ch = out_ch_ident ~i in
+        Cg.Struc.expr
+          ch
+          (Cg.Expr.call "open_out_bin" [Cg.Arr.get "Sys.argv" & Cg.Lit.int i])
+        ^
+        Cg.Struc.expr
+          out_ident
+          (Cg.Expr.call "output_string" [ch])
+      end
+      outs
+  end
 
-let call_generation =
+let call_generation outs =
+  let close_all_code =
+    Cg.Expr.seq & List.mapi begin fun i _ ->
+        let i = i + 1 in
+        Cg.Expr.call "close_out_noerr" [out_ch_ident ~i]
+      end
+      outs
+  in
+  let remove_all_code =
+    let i = Cg.Expr.lid "i" in
+    Cg.Expr.for_ i (Cg.Lit.int 1) (Cg.Lit.int (List.length outs)) [
+      Cg.Expr.let_in "fn" (Cg.Arr.get "Sys.argv" i) begin
+        "try Sys.remove fn \n\
+         with e -> \n\
+           Printf.eprintf \"warning: can't remove file %s: %s\" \n\
+             fn (Printexc.to_string e) \n\
+        "
+      end
+    ]
+  in
   Cg.line_directive "_call_generation_" 0 ^
-  "let () = \n\
-     try \n\
-       generate mlt; \n\
-       close_out out_ch \n\
-     with \n\
-     | e -> \n\
-         close_out out_ch; \n\
-         Sys.remove out_fn; \n\
-         raise e \n\
-  "
+    Cg.Struc.expr "()" begin
+    Cg.Expr.let_in "close_all ()" close_all_code begin
+    Cg.Expr.let_in "remove_all ()" remove_all_code begin
+      "try \n\
+         generate mlt; \n\
+         close_all () \n\
+       with \n\
+       | e -> \n\
+           close_all (); \n\
+           remove_all (); \n\
+           raise e \n\
+      "
+    end
+    end
+    end
 
-let do_stage ?(pkgs = []) ~mlt ~pre ~post ~fname () =
+(* outs: list of ("ident_for_output_command", "output_to_filename.ml") *)
+let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
+  assert (outs <> []);
+  let has_dups_by proj =
+    List.length outs
+      <> List.length (List.uniq ~eq:(fun a b -> proj a = proj b) outs) in
+  if has_dups_by fst
+  then invalid_arg "staging: duplicate output identifiers"
+  else if has_dups_by snd
+  then invalid_arg "staging: duplicate output file names"
+  else
   let pkgs = "cadastr" :: pkgs in
   let (tmpfn, out_ch) = Filename.open_temp_file
     ~mode:[Open_binary] "stage" ".ml" in
   let pre = "src/codegen.ml" :: pre in
-  output_string out_ch prepare_output;
+  output_string out_ch (prepare_output outs);
   output_string out_ch Cg.dummy_line_directive;
   output_string out_ch & Cg.Struc.expr "__mlt_filename" & Cg.Lit.string mlt;
   copy_mls_to_channel ~out_ch ~files:pre;
   output_string out_ch mlt_typedefs;
   output_mlt ~out_ch (datadef_of_mlt mlt (* 1 (Filew.file_lines mlt) *) );
   copy_mls_to_channel ~out_ch ~files:post;
-  output_string out_ch call_generation;
+  output_string out_ch (call_generation outs);
   close_out out_ch;
-  let byt = Filename.chop_suffix tmpfn ".ml" ^ ".byte" in
+  let tmpfn_prefix = Filename.chop_suffix tmpfn ".ml" in
+  let byt = tmpfn_prefix ^ ".byte" in
   let errc = compile_ml_to_byt ~pkgs tmpfn byt in
   if errc <> 0
   then failwith "stage: compilation error; source left in %s" tmpfn
   else
   let errc =
     sys_command & sprintf "ocamlrun %s %s"
-      (Filename.quote byt) (Filename.quote fname)
+      (Filename.quote byt)
+      (String.concat " " & List.map (snd @> Filename.quote) outs)
   in
   if errc <> 0
   then
     failwith "stage: runtime error; source left in %s, bytecode in %s"
       tmpfn byt
   else
-    Sys.remove tmpfn;
-    Sys.remove byt;
-    ()
+    List.iter Sys.remove
+      [ tmpfn
+      ; tmpfn_prefix ^ ".cmi"
+      ; tmpfn_prefix ^ ".cmo"
+      ; byt
+      ]
 
+let do_stage ?(pkgs = []) ~mlt ~pre ~post ~fname =
+  do_stage_multi ~pkgs ~mlt ~pre ~post ~outs:[("", fname)]
 
 let stage ?(pkgs = []) ~mlt ~pre ~post target =
   Make.make1 target (mlt :: (pre @ post)) &
