@@ -18,7 +18,13 @@ let code_of_directive dirtype dir args_code =
 
 let dir_code fname lineno code =
   let line_dir = "\n" ^ Cg.line_directive fname lineno in
-  Cg.Sum.constr "Dir" [line_dir ^ code]
+  Cg.Sum.constr "Dir"
+    [
+        "(dir_with_loc " ^ Cg.Lit.string fname ^ " " ^ Cg.Lit.int lineno
+      ^ line_dir
+      ^ code
+      ^ "\n)"
+    ]
 
 }
 

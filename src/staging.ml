@@ -160,6 +160,19 @@ let call_generation outs =
     end
     end
 
+let dir_with_loc =
+"let msg_of_exn e = match e with \n\
+ | (Failure msg | Invalid_argument msg) -> msg \n\
+ | e -> Printexc.to_string e \n\
+ ;; \n\
+ let dir_with_loc fname lineno dir ctx = \n\
+   try dir ctx with e -> \n\
+     ( codegen_error fname lineno (msg_of_exn e) \n\
+     ; exit 1 \n\
+     ) \n\
+ ;; \n\
+"
+
 (* outs: list of ("ident_for_output_command", "output_to_filename.ml") *)
 let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
   assert (outs <> []);
@@ -174,8 +187,9 @@ let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
   let pkgs = "cadastr" :: pkgs in
   let (tmpfn, out_ch) = Filename.open_temp_file
     ~mode:[Open_binary] "stage" ".ml" in
-  let pre = "src/codegen.ml" :: pre in
   output_string out_ch (prepare_output outs);
+  copy_ml_to_channel ~out_ch "src/codegen.ml";
+  output_string out_ch dir_with_loc;
   output_string out_ch Cg.dummy_line_directive;
   output_string out_ch & Cg.Struc.expr "__mlt_filename" & Cg.Lit.string mlt;
   copy_mls_to_channel ~out_ch ~files:pre;

@@ -323,3 +323,6 @@ let line_directive fname lineno =
   sprintf "# %i %S\n" lineno fname
 
 let dummy_line_directive = line_directive "_none_" 0
+
+let codegen_error fname lineno msg =
+  eprintf "File %S, line %i:\n%s\n%!" fname lineno msg
