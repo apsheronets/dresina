@@ -56,15 +56,17 @@ let save_digests () =
 (********************************)
 
 type modified =
-| M_not_checked
 | M_not_modified
 | M_rebuilt
+
+type status =
+| Actual of modified
+| Not_checked
 
 type rule =
   { deps : string list
   ; build_func : unit -> unit
-  ; mutable modified : modified
-  ; mutable actual : bool
+  ; mutable status : status
   }
 
 let rules = Hashtbl.create 17
@@ -80,8 +82,7 @@ let make target deps func =
       target
       { deps = deps
       ; build_func = func
-      ; modified = M_not_checked
-      ; actual = false
+      ; status = Not_checked
       }
 
 (**)
@@ -139,51 +140,50 @@ let rec build target =
       then No_rebuild
       else Rebuild_needed
   | Some r ->
-      mdbg "building %S, it's a target, actual? = %b" target r.actual;
-      if r.actual
-      then
-        match r.modified with
-        | M_not_checked -> assert false
-        | M_not_modified -> No_rebuild
-        | M_rebuilt -> Rebuild_needed
-      else begin
-        assert (r.modified = M_not_checked);
-        let deps_rebuild =
-          (* !  we need to run "build dep" on _all_ deps to get all files'
-                digests, to store them later in .build_digests!
-                So here are no List.exists, and no "acc || build dep..".
-           *)
-          List.fold_left
-            (fun acc dep -> (build dep = Rebuild_needed) || acc)
-            false
-            r.deps
-        in
-        let rebuild_needed =
-             not (Sys.file_exists target)
-          || deps_rebuild
-        in
-        mdbg "building %S, rebuild_needed? = %b" target rebuild_needed;
-        begin
-          if rebuild_needed
-          then begin
-            create_dirs_for_file target;
-            r.build_func ();
-            r.modified <- M_rebuilt
-          end else begin
-            r.modified <- M_not_modified
-          end
-        end;
-        r.actual <- true;
-        if rebuild_needed
-        then Rebuild_needed
-        else No_rebuild
+      begin
+        mdbg "building %S, it's a target, actual? = %b" target
+          (r.status <> Not_checked);
+        match r.status with
+        | Actual M_not_modified -> No_rebuild
+        | Actual M_rebuilt -> Rebuild_needed
+        | Not_checked ->
+            begin
+              let deps_rebuild =
+                (* !  we need to run "build dep" on _all_ deps to get all
+                   files' digests, to store them later in .build_digests!
+                   So here are no List.exists, and no "acc || build dep..".
+                 *)
+                List.fold_left
+                  (fun acc dep -> (build dep = Rebuild_needed) || acc)
+                  false
+                  r.deps
+              in
+              let rebuild_needed =
+                   not (Sys.file_exists target)
+                || deps_rebuild
+              in
+              mdbg "building %S, rebuild_needed? = %b" target rebuild_needed;
+              begin
+                if rebuild_needed
+                then begin
+                  create_dirs_for_file target;
+                  r.build_func ();
+                  r.status <- Actual M_rebuilt
+                end else begin
+                  r.status <- Actual M_not_modified
+                end
+              end;
+              if rebuild_needed
+              then Rebuild_needed
+              else No_rebuild
+            end
       end
 
 let do_make () =
   ( Hashtbl.iter
       (fun target _rule -> ignore (build target))
       rules
-  ; Hashtbl.iter (fun _target r -> assert r.actual) rules
+  ; Hashtbl.iter (fun _target r -> assert (r.status <> Not_checked)) rules
   ; save_digests ()
   )
 
