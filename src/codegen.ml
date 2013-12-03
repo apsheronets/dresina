@@ -3,6 +3,7 @@ open Strings.Latin1
 open Printf
 
 let failwith fmt = Printf.ksprintf failwith fmt
+let invalid_arg fmt = Printf.ksprintf invalid_arg fmt
 let dbg fmt = Printf.ksprintf (fun s -> Printf.eprintf "DBG: %s\n%!" s) fmt
 
 (*
@@ -12,7 +13,7 @@ let
 *)
 
 
-let check_failed ~fn txt = failwith "Codegen.%s: %s" fn txt
+let check_failed ~place txt = invalid_arg "%s: %s" place txt
 
 let ident_ok n =
   let rec loop i =
@@ -32,32 +33,32 @@ let ident_ok n =
   in
     loop 1
 
-let check_uid ~fn n =
+let check_uid ~place n =
   if n = ""
   then
-    check_failed ~fn "uppercase identifier can't be empty"
+    check_failed ~place "uppercase identifier can't be empty"
   else
     let c = n.[0] in
     if c >= 'A' && c <= 'Z'
     then
       if ident_ok n
       then ()
-      else check_failed ~fn "uppercase identifier: bad characters"
-    else check_failed ~fn "uppercase identifier must begin with 'A'..'Z'"
+      else check_failed ~place "uppercase identifier: bad characters"
+    else check_failed ~place "uppercase identifier must begin with 'A'..'Z'"
 
-let check_lid ~fn n =
+let check_lid ~place n =
   if n = ""
   then
-    check_failed ~fn "lowercase identifier can't be empty"
+    check_failed ~place "lowercase identifier can't be empty"
   else
     let c = n.[0] in
     if c >= 'a' && c <= 'z' || c = '_'
     then
       if ident_ok n
       then ()
-      else check_failed ~fn "lowercase identifier: bad characters"
+      else check_failed ~place "lowercase identifier: bad characters"
     else
-      check_failed ~fn
+      check_failed ~place
         "lowercase identifier must begin with 'a'..'z' or '_'"
 
 module Lit
@@ -107,14 +108,15 @@ module Tuple
       if List.length args > 1
       then ()
       else
-        failwith "Codegen.Tuple.%s: must have more than one type argument" fn
+        invalid_arg
+          "Codegen.Tuple.%s: must have more than one type argument" fn
 
     let constr args =
       check_arity args ~fn:"constr";
       "(" ^ String.concat ", " args ^ ")"
 
     let typedef type_name args =
-      check_lid ~fn:"Tuple.typedef" type_name;
+      check_lid ~place:"Codegen.Tuple.typedef" type_name;
       check_arity ~fn:"typedef" args;
       sprintf "type %s = %s\n;;\n" type_name &
         String.concat " * " args
@@ -124,7 +126,7 @@ module Sum
  =
   struct
     let constr constr_name args =
-      check_uid ~fn:"Sum.constr" constr_name;
+      check_uid ~place:"Codegen.Sum.constr" constr_name;
       sprintf "%s%s"
         constr_name
         (match args with
@@ -134,7 +136,7 @@ module Sum
         )
 
     let typedef_constr (cname, ctypes) =
-      check_uid ~fn:"Sum.typedef_constr" cname;
+      check_uid ~place:"Codegen.Sum.typedef_constr" cname;
       if ctypes = []
       then cname
       else
@@ -142,7 +144,7 @@ module Sum
           String.concat " * " ctypes
 
     let typedef type_name constrs =
-      check_lid ~fn:"Sum.typedef" type_name;
+      check_lid ~place:"Codegen.Sum.typedef" type_name;
       sprintf "type %s =\n%s;;\n" type_name &
         String.concat "" &
         List.map (typedef_constr @> sprintf "| %s\n") constrs
@@ -156,20 +158,20 @@ module Typ
  =
   struct
     let prim n =
-      check_lid ~fn:"Typ.prim" n;
+      check_lid ~place:"Codegen.Typ.prim" n;
       n
 
     let arrow lst =
       if List.length lst < 2
-      then failwith "Codegen.Typ.arrow: must have >= 2 type arguments"
+      then invalid_arg "Codegen.Typ.arrow: must have >= 2 type arguments"
       else
         sprintf "(%s)" &
           String.concat " -> " lst
 
     let param ty args =
-      check_lid ~fn:"Typ.param" ty;
+      check_lid ~place:"Codegen.Typ.param" ty;
       match args with
-      | [] -> failwith "Codegen.Typ.param: not a parametrized type"
+      | [] -> invalid_arg "Codegen.Typ.param: not a parametrized type"
       | h :: [] -> sprintf "%s %s" h ty
       | _ ->
          let args_code = String.concat ", " args in
@@ -208,20 +210,21 @@ module Expr
 
     (* can call non-qualified functions only; without "Module." parts *)
     let call func_name args =
-      check_lid ~fn:"call" func_name;
+      check_lid ~place:"Codegen.Expr.call" func_name;
       if args = []
-      then failwith "Codegen.call: can't call function without arguments"
+      then invalid_arg
+        "Codegen.Expr.call: can't call function without arguments"
       else
       sprintf "(%s %s)" func_name &
         String.concat " " &
         List.map (sprintf "(%s)") args
 
     let lid n =
-      check_lid ~fn:"lid" n;
+      check_lid ~place:"Codegen.Expr.lid" n;
       n
 
     let modqual mod_name mod_comp =
-      check_uid mod_name ~fn:"modqual";
+      check_uid mod_name ~place:"Codegen.Expr.modqual";
       mod_name ^ "." ^ mod_comp
 
     (* [match_ "lst" [ ("[]", "None") ; ("h :: t", "Some (h, t)") ]] *)
@@ -260,7 +263,7 @@ module Struc
     let expr ?ty name body =
       if name = "()"
       then ()
-      else check_lid ~fn:"Struc.expr" name;
+      else check_lid ~place:"Codegen.Struc.expr" name;
       let opt_ty =
         match ty with
         | None -> ""
@@ -271,11 +274,16 @@ module Struc
         name opt_ty body
 
     let func name args body =
-      check_lid ~fn:"Struc.func" name;
+      check_lid ~place:"Codegen.Struc.func" name;
       sprintf "let %s %s =\n%s\n;;\n"
         name
         (String.concat " " args)
         (indent 2 body)
+
+    let module_ name body =
+      check_uid ~place:"Codegen.Struc.module_" name;
+      sprintf "module %s = struct\n%s\nend;;"
+        name (indent 2 body)
 
   end
 
@@ -284,7 +292,7 @@ module Record
   struct
 
     let typedef rname fields =
-      check_lid rname ~fn:"Record.typedef";
+      check_lid rname ~place:"Codegen.Record.typedef";
       let buf = Buffer.create 100 in
       let fld (n, t) = sprintf "%s : %s" n t in
       begin format_mids
@@ -308,6 +316,8 @@ module Arr
       sprintf "%s.(%s)" arr_expr index
   end
 
+let uid ?(place="Codegen.uid") n =
+  check_uid ~place n; n
 
 let line_directive fname lineno =
   sprintf "# %i %S\n" lineno fname
