@@ -32,8 +32,17 @@ let dir_code fname lineno code =
 let space = [ '\x20' '\x09' ]
 let eol = '\r'? '\n'
 let dir = space* '%' space*
+let dir_comment = space* '#' space*
 let linechar = [ '\000' - '\255' ] # [ '\n' '\r' ]
-let linechar_no_percent = linechar # [ '%' ]
+let not_directive_beginning =
+  (
+     (linechar # ['#' '%'])
+   |
+     ( '#'
+       space*
+       (linechar # ['%'] # space)
+     )
+  )
 let ident_re = [ 'a' - 'z' ] [ 'a' - 'z' 'A' - 'Z' '0' - '9' '_' ]*
 let unquoted_string_char =
   [ '\033' - '\126' ] # [ '\'' '"' '[' ']' '{' '}' '(' ')' ]
@@ -45,11 +54,16 @@ rule file rev_acc fname lineno = parse
       List.rev rev_acc
     }
 
-| dir
+| (dir_comment as comm)? dir
     {
       let (lineno, code) = directive fname lineno lexbuf in
       (* Printf.eprintf "dir res: '%s'\n" code; *)
-      file (code :: rev_acc) fname lineno lexbuf
+      let rev_acc =
+        match comm with
+        | None -> code :: rev_acc
+        | Some _ -> rev_acc
+      in
+      file rev_acc fname lineno lexbuf
     }
 
 | ""
@@ -70,7 +84,7 @@ and ml_text lineno buf = parse
       lineno
     }
 
-| space* (linechar_no_percent linechar*)? (eol | eof)
+| space* (not_directive_beginning linechar*)? (eol | eof)
     {
       let line = Lexing.lexeme lexbuf in
       (* Printf.eprintf "ml_text: %S\n%!" line; *)

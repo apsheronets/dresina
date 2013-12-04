@@ -1,4 +1,4 @@
 % get /say/hello Say_controller hello
 % get /say/goodbye Say_controller goodbye
 
-% get /myint/int_arg:int/mystring/string_arg:string Test_controller test_action
+# % get /myint/int_arg:int/mystring/string_arg:string Test_controller test_action
