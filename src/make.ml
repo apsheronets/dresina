@@ -1,10 +1,15 @@
 open Common
 open Cd_All
+open Printf
+
+exception Make_exn of string
+
+let make_error fmt = ksprintf (fun s -> raise (Make_exn s)) fmt
 
 (*
-let mdbg fmt = Printf.(ksprintf (fun s -> eprintf "MK: %s\n%!" s) fmt)
+let mdbg fmt = (ksprintf (fun s -> eprintf "MK: %s\n%!" s) fmt)
 *)
-let mdbg fmt = Printf.ifprintf stdout fmt
+let mdbg fmt = ifprintf stdout fmt
 
 let no_digest = "\x00"
 
@@ -61,7 +66,7 @@ let rec create_dirs_for_file fn =
   then begin
     if Sys.is_directory dir
     then ()
-    else failwith "%S expected to be directory, but it is a file" dir
+    else make_error "%S expected to be a directory, but it is a file" dir
   end else begin
     create_dirs_for_file dir;
     mdbg "creating directory %S" dir;
@@ -94,10 +99,10 @@ let make targets deps func =
   List.iter
     begin fun target ->
       if Hashtbl.mem rules target
-      then failwith "Make: rule for %S already exists" target
+      then make_error "rule for %S already exists" target
       else
         mdbg "Make: registering target %S with dependencies [%s]"
-          target (String.concat "; " & List.map (Printf.sprintf "%S") deps);
+          target (String.concat "; " & List.map (sprintf "%S") deps);
         Hashtbl.add
           rules
           target
@@ -118,10 +123,14 @@ let hashtbl_find_opt h k = try Some (Hashtbl.find h k) with Not_found -> None
 let does_digest_match fn =
   match hashtbl_find_opt !!digests fn with
   | None ->
-      let current_digest = Digest.file fn in
-      Hashtbl.add !!digests fn (no_digest, current_digest);
-      mdbg "does_digest_match %S: no stored digest, doesn't match" fn;
-      false
+      if Sys.file_exists fn
+      then begin
+        let current_digest = Digest.file fn in
+        Hashtbl.add !!digests fn (no_digest, current_digest);
+        mdbg "does_digest_match %S: no stored digest, doesn't match" fn;
+        false
+      end else
+        make_error "source file %S not found" fn
   | Some (old_dig, new_dig) ->
       let new_dig =
         if new_dig == no_digest
@@ -184,7 +193,7 @@ let rec build target =
                     try
                       r.build_func ()
                     with
-                    | e -> failwith "Make: failed.  Target: %s, deps: %s, \
+                    | e -> make_error "build failed.  Target: %s, deps: %s, \
                                      exception: %s"
                         target (String.concat ", " r.deps)
                         (Printexc.to_string e)
@@ -201,12 +210,16 @@ let rec build target =
       end
 
 let do_make () =
-  ( Hashtbl.iter
-      (fun target _rule -> ignore (build target))
-      rules
-  ; Hashtbl.iter (fun _target r -> assert (!(r.status) <> Not_checked)) rules
-  ; save_digests ()
-  )
+  try
+    ( Hashtbl.iter
+        (fun target _rule -> ignore (build target))
+        rules
+    ; Hashtbl.iter (fun _target r -> assert (!(r.status) <> Not_checked)) rules
+    ; save_digests ()
+    )
+  with
+  | Make_exn msg -> (eprintf "Make error: %s\n%!" msg; exit 1)
+  | e -> raise e
 
 let do_clean () =
   Hashtbl.iter
