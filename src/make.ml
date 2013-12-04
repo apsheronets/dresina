@@ -218,8 +218,17 @@ let do_make () =
     ; save_digests ()
     )
   with
-  | Make_exn msg -> (eprintf "Make error: %s\n%!" msg; exit 1)
-  | e -> raise e
+  | Make_exn msg ->
+      begin
+        save_digests ();
+        eprintf "Make error: %s\n%!" msg;
+        exit 1
+      end
+  | e ->
+      begin
+        save_digests ();
+        raise e
+      end
 
 let do_clean () =
   Hashtbl.iter
