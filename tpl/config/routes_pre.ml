@@ -19,6 +19,7 @@ type action =
   { cntr_name : string
   ; action_name : string
   ; bindings : binding list
+  ; linedir : string
   }
 
 type level =
@@ -141,6 +142,7 @@ let get3 uri_patt_str cntr_name cntr_meth context =
           { cntr_name = uid ~place:"Controller name" cntr_name
           ; action_name = Expr.lid cntr_meth
           ; bindings = bindings
+          ; linedir = directive_linedir ()
           }
         in
         context := add_handler !context mpath action

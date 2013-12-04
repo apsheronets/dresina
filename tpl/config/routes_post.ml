@@ -16,6 +16,7 @@ let rec dump_routes ?(indent = 0) level =
 
 let routing_action a =
   let actfunc = Expr.modqual a.cntr_name a.action_name in
+  "\n" ^ a.linedir ^
   actfunc ^ String.concat "" begin
       List.map
         (fun b ->

@@ -165,7 +165,10 @@ let dir_with_loc =
  | (Failure msg | Invalid_argument msg) -> msg \n\
  | e -> Printexc.to_string e \n\
  ;; \n\
+ let __dir_fname = ref \"\" and __dir_lineno = ref 0;; \n\
+ let directive_linedir () = line_directive !__dir_fname !__dir_lineno;; \n\
  let dir_with_loc fname lineno dir ctx = \n\
+  __dir_fname := fname; __dir_lineno := lineno; \n\
    try dir ctx with e -> \n\
      ( codegen_error fname lineno (msg_of_exn e) \n\
      ; exit 1 \n\
