@@ -152,7 +152,16 @@ type rebuild =
 | Rebuild_needed
 | No_rebuild
 
-let rec build target =
+let add_to_path ~path ~target =
+  let path' = (target :: path) in
+  if List.mem target path
+  then
+    make_error "circular dependencies: %s" &
+    String.concat " <- " path'
+  else
+    path'
+
+let rec build ~path target =
   match hashtbl_find_opt rules target with
   | None ->
       let matches = does_digest_match target in
@@ -170,13 +179,16 @@ let rec build target =
         | Actual M_rebuilt -> Rebuild_needed
         | Not_checked ->
             begin
+              let path' = add_to_path ~path ~target in
               let deps_rebuild =
                 (* !  we need to run "build dep" on _all_ deps to get all
                    files' digests, to store them later in .build_digests!
                    So here are no List.exists, and no "acc || build dep..".
                  *)
                 List.fold_left
-                  (fun acc dep -> (build dep = Rebuild_needed) || acc)
+                  (fun acc dep ->
+                     (build ~path:path' dep = Rebuild_needed) || acc
+                  )
                   false
                   r.deps
               in
@@ -212,7 +224,7 @@ let rec build target =
 let do_make () =
   try
     ( Hashtbl.iter
-        (fun target _rule -> ignore (build target))
+        (fun target _rule -> ignore (build ~path:[] target))
         rules
     ; Hashtbl.iter (fun _target r -> assert (!(r.status) <> Not_checked)) rules
     ; save_digests ()
