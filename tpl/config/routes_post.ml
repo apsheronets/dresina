@@ -25,7 +25,7 @@ let routing_action a =
     (sprintf "%s.Controller(Ctx)" a.cntr_name)
   begin
     "\n" ^ a.linedir ^
-    "(((" ^ Expr.modqual "Con" a.action_name ^
+    "((" ^ Expr.modqual "Con" a.action_name ^
     String.concat "" begin
         List.map
           (fun b ->
@@ -33,7 +33,7 @@ let routing_action a =
           )
           a.bindings
       end
-    ^ ") ()) : Proj_common.response)\n" ^ rg_dir
+    ^ ") : unit -> Amall_http.response IO.m)\n" ^ rg_dir
   end
   end
 
