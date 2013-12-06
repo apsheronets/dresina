@@ -2,6 +2,7 @@ open Cd_All
 open Strings.Latin1
 open Staging
 open Ml_comp
+open Common
 
 let dbpkgs = ["amall.dbi"]
 let webpkgs = ["amall"]
@@ -78,7 +79,12 @@ let clean_cmd =
   Term.(pure clean_cmd_action),
   Term.info "clean" ~doc
 
-let cmds = [server_cmd; clean_cmd]
+let dump_deps_cmd =
+  let doc = "dump make dependencies" in
+  Term.(pure Make.dump_deps),
+  Term.info "dump-deps" ~doc
+
+let cmds = [server_cmd; clean_cmd; dump_deps_cmd]
 
 let () = match Term.eval_choice default_cmd cmds with
 | `Error _ -> exit 1

@@ -246,5 +246,13 @@ let do_clean () =
   Hashtbl.iter
     (fun target _rule -> Sys.remove target
     )
+ 
+let dump_deps () =
+  Hashtbl.iter
+    (fun target rule ->
+       printf "%s : %s\n" target
+         (String.concat " " rule.deps)
+    )
+    rules
     rules;
   Sys.remove digests_fn
