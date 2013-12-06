@@ -239,21 +239,20 @@ let has_slash p =
 
 (* calls [stage] with common conventions on files paths *)
 let stage_multi_paths ?(pkgs = []) ~rel_path ~mlt ~pre ~post targets =
-  let ( / ) = Filename.concat in
-  let mlt = "proj" / rel_path / mlt
+  let mlt = "proj" // rel_path // mlt
   and (pre, post) = Tuple2.map_mono
     (List.map
        (fun ml ->
           if has_slash ml
           then ml
-          else "tpl" / rel_path / ml
+          else "tpl" // rel_path // ml
        )
     )
     (pre, post)
   and targets =
     List.map
       (fun (output_suffix, target) ->
-         (output_suffix, "proj-build" / rel_path / target)
+         (output_suffix, "proj-build" // rel_path // target)
       )
       targets
   in

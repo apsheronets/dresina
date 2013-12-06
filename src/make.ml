@@ -87,11 +87,12 @@ type rule =
   ; build_func : unit -> unit
   ; status : status ref
   ; create_dirs : unit -> unit
+  ; add_cleanup : unit Lazy.t
   }
 
 let rules = Hashtbl.create 17
 
-let make targets deps func =
+let make ?(clean_files = []) targets deps func =
   let status = ref Not_checked in
   let create_dirs () =
     List.iter create_dirs_for_file targets
@@ -110,11 +111,15 @@ let make targets deps func =
           ; build_func = func
           ; status = status
           ; create_dirs = create_dirs
+          ; add_cleanup = lazy begin
+                List.iter remove_file_if_exists clean_files
+              end
           }
     end
     targets
 
-let make1 target deps func = make [target] deps func
+let make1 ?(clean_files = []) target deps func =
+  make ~clean_files [target] deps func
 
 (**)
 
@@ -244,9 +249,13 @@ let do_make () =
 
 let do_clean () =
   Hashtbl.iter
-    (fun target _rule -> Sys.remove target
+    (fun target rule ->
+       remove_file_if_exists target;
+       !!(rule.add_cleanup)
     )
- 
+    rules;
+  remove_file_if_exists digests_fn
+
 let dump_deps () =
   Hashtbl.iter
     (fun target rule ->
@@ -254,5 +263,3 @@ let dump_deps () =
          (String.concat " " rule.deps)
     )
     rules
-    rules;
-  Sys.remove digests_fn

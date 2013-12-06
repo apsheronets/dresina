@@ -31,7 +31,7 @@ type context = level ref
 
 (****************************)
 
-let no_route_ml = "raise Not_found"
+let no_route_ml = "raise No_route"
 
 let binding ~level ~ty ~id =
   let b = Expr.lid ("__uri_patt_" ^ string_of_int level) in
@@ -138,6 +138,7 @@ let get3 uri_patt_str cntr_name cntr_meth context =
         let path = String.split ( ( = ) '/' ) uri_patt.path in
         let mpath = meta_segs path in
         let bindings = bindings_of_mpath mpath in
+        let cntr_name = String.capitalize cntr_name in
         let action =
           { cntr_name = uid ~place:"Controller name" cntr_name
           ; action_name = Expr.lid cntr_meth

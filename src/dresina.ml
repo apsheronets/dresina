@@ -47,12 +47,87 @@ let () = stage_multi_paths
   ~mlt:"routes.mlt"
   [("routes", "route.ml"); ("routing", "routing.ml")]
 
-let () = Make.do_make ()
+let () = Ml_make.glue
+  [ "tpl/internal/main_pre.ml"
+  ; "proj-build/config/routing.ml"
+  ; "tpl/internal/main_post.ml"
+  ]
+  "proj-build/main.ml"
 
+let server_bin = "proj-build/main"
+
+let view_path = "app/views"
+let view_emls = ["say/hello.html.eml"]  (* todo: glob *)
+
+let view_bodies =
+  List.map begin fun eml ->
+      let body_ml = "proj-build" // view_path //
+        change_suffix ~place:".eml -> .body.ml" eml ".eml" ".body.ml" in
+      let eml = "proj" // view_path // eml in
+      Make.make1 body_ml [eml] begin fun () ->
+        sys_command_ok & Printf.sprintf
+          "ecaml -d %s -o %s -p 'Buffer.add_string buf' \
+             -esc-p 'Proj_common.buffer_add_html buf' \
+             -header 'begin' -footer '() end'"
+          (Filename.quote eml) (Filename.quote body_ml)
+        end
+    end
+    view_emls
+
+
+let con_path = "app/controllers"
+let controllers_mls =
+  Array.filter_to_list
+    (fun fn -> Filename.check_suffix fn ".ml")
+    (Sys.readdir ("proj" // con_path))
+
+let () = List.iter
+  (fun con_ml ->
+     Ml_make.glue
+       [ "tpl"  // con_path // "controller_pre.ml"
+       ; "proj" // con_path // con_ml
+       ; "tpl"  // con_path // "controller_post.ml"
+       ] &
+     "proj-build" // con_path // con_ml
+  )
+  controllers_mls
+
+let () = Ml_make.glue
+  ["tpl/internal/proj_common.ml"]
+  "proj-build/internal/proj_common.ml"
+
+let _cmx : string = Ml_make.compile_ml_to_obj
+  ~pkgs:allpkgs
+  ~deps:[]
+  "proj-build/internal/proj_common.ml"
+
+let common_objs = [ "proj-build/internal/proj_common.cmx" ]
+
+let controller_deps = common_objs  (* todo *)
+
+let controller_objs = List.map
+  (fun ml ->
+     Ml_make.compile_ml_to_obj
+       ~deps:controller_deps
+       ~pkgs:allpkgs
+       ~incl:["proj-build/internal"] &
+     "proj-build" // con_path // ml
+  )
+  controllers_mls
+
+let () = Ml_make.compile_mls_to_nat
+  ~pkgs:allpkgs
+  ~incl:["proj-build/internal"; "proj-build" // con_path]
+  ~pre_objs:(common_objs @ controller_objs)
+  [ "config/route.ml"; "main.ml" ]
+  server_bin
 
 (***********)
 
-let run_server () = print_string "run server\n"
+let run_server () =
+  Make.do_make ();
+  Printf.printf "running server %S...\n%!" server_bin;
+  sys_command_ok server_bin
 
 let default_cmd_action =
   `Help (`Plain, None)

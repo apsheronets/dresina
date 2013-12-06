@@ -14,17 +14,28 @@ let rec dump_routes ?(indent = 0) level =
         m
 *)
 
-let routing_action a =
-  let actfunc = Expr.modqual a.cntr_name a.action_name in
-  "\n" ^ a.linedir ^
-  actfunc ^ String.concat "" begin
-      List.map
-        (fun b ->
-           Printf.sprintf " ~%s:(%s)" b.arg_ident b.from_string
-        )
-        a.bindings
-    end
+let rg_dir = line_directive "_routing_generated_" 0
 
+let conctx_modty = "Proj_common.CONTROLLER_CONTEXT"
+
+let routing_action a =
+  Expr.let_in "module Ctx" ("(val conctx : " ^ conctx_modty ^ ")") begin
+  "\n" ^ a.linedir ^
+  Expr.let_in ~oneline:true "module Con"
+    (sprintf "%s.Controller(Ctx)" a.cntr_name)
+  begin
+    "\n" ^ a.linedir ^
+    "(((" ^ Expr.modqual "Con" a.action_name ^
+    String.concat "" begin
+        List.map
+          (fun b ->
+             Printf.sprintf " ~%s:(%s)" b.arg_ident b.from_string
+          )
+          a.bindings
+      end
+    ^ ") ()) : Proj_common.response)\n" ^ rg_dir
+  end
+  end
 
 let rec generate_routing_level level =
   match level with
@@ -53,8 +64,8 @@ let rec generate_routing_level level =
         )
 
 let generate_routing level =
-  line_directive "_routing_generated_" 0 ^
-  Struc.func "routes" ["path"] (generate_routing_level level)
+  rg_dir ^
+  Struc.func "routes" ["path"; "conctx"] (generate_routing_level level)
 
 type con_seg_bind =
 [ `Cseg of string

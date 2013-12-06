@@ -240,9 +240,14 @@ module Expr
            branches
         )
 
-    let let_in patt binding expr =
-      sprintf "let %s =\n%s\nin\n%s"
-        patt (indent 2 binding) expr
+    let let_in ?(oneline=false) patt binding expr =
+      if oneline
+      then
+        sprintf "let %s = %s in\n%s"
+          patt binding expr
+      else
+        sprintf "let %s =\n%s\nin\n%s"
+          patt (indent 2 binding) expr
 
     let seq expr_list =
       match expr_list with

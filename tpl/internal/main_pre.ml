@@ -1,18 +1,14 @@
 open Am_All
 open Amall_types
-
-module IO = IO_Lwt
-
-module I = Iteratees.Make(IO)
-
-module S = Amall_http_service.Service(IO)(I)
+open Proj_common
 
 let (my_listener, http_root, _ws_root) = S.listener_create (`Inet_any 4000)
 
-let root_endpoint =
+let http_root_endpoint =
   ( http_root
   , `Service ([], "")
   )
 
 open Amall_http
 
+exception No_route

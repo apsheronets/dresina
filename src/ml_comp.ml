@@ -7,6 +7,12 @@ let sys_command cmd =
   dbg "Sys.command: %s" cmd;
   Sys.command cmd
 
+let sys_command_ok cmd =
+  let errc = sys_command cmd in
+  if errc = 0
+  then ()
+  else failwith "Command failed, error code %i: %s\n%!" errc cmd
+
 let copy_ml_to_channel ~out_ch fname =
   Filew.with_file_in_bin
     fname
@@ -25,16 +31,14 @@ let copy_mls_to_ml ~out ~files =
        copy_mls_to_channel ~out_ch ~files
     )
 
-let packages_dir pkgs =
-  if pkgs = []
-  then ""
-  else "-package " ^ Filename.quote (String.concat "," pkgs)
+let packages_dir ~pkgs =
+  let pkgs = "threads" :: pkgs in
+  "-thread -package " ^ Filename.quote (String.concat "," pkgs)
 
 let compile_ml_to_byt ?(pkgs = []) ml byt =
-  let pkgs = "threads" :: pkgs in
   let cmd = Printf.sprintf
-      "ocamlfind ocamlc -g -w A -thread -linkpkg %s %s -o %s"
-      (packages_dir pkgs) (Filename.quote ml) (Filename.quote byt) in
+      "ocamlfind ocamlc -g -w A -linkpkg %s %s -o %s"
+      (packages_dir ~pkgs) (Filename.quote ml) (Filename.quote byt) in
   let errc = sys_command cmd
   in
   begin
