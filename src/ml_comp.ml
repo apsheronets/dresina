@@ -3,16 +3,6 @@ open Common
 
 module Cg = Codegen
 
-let sys_command cmd =
-  dbg "Sys.command: %s" cmd;
-  Sys.command cmd
-
-let sys_command_ok cmd =
-  let errc = sys_command cmd in
-  if errc = 0
-  then ()
-  else failwith "Command failed, error code %i: %s\n%!" errc cmd
-
 let copy_ml_to_channel ~out_ch fname =
   Filew.with_file_in_bin
     fname

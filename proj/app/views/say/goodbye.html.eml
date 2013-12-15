@@ -1,0 +1,3 @@
+<p>ПАКА-ПАКА!11</p>
+
+<%=raw link_to "hello again?" Route.Say_controller.Hello.path %>

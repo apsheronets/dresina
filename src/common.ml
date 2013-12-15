@@ -17,3 +17,13 @@ let remove_file_if_exists fn =
   if Sys.file_exists fn
   then Sys.remove fn
   else ()
+
+let sys_command cmd =
+  dbg "Sys.command: %s" cmd;
+  Sys.command cmd
+
+let sys_command_ok cmd =
+  let errc = sys_command cmd in
+  if errc = 0
+  then ()
+  else failwith "Command failed, error code %i: %s\n%!" errc cmd

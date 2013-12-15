@@ -15,6 +15,15 @@ let no_digest = "\x00"
 
 let digests_fn = "proj-build/.build_digests"
 
+type dep =
+| Dfile of string
+| Dvirt of string
+
+let dump_dep dep =
+  match dep with
+  | Dfile fn -> sprintf "file %S" fn
+  | Dvirt vn -> sprintf "virtual %S" vn
+
 (* fname -> (stored_digest, new_digest).
    digest can be (==)no_digest when not present
  *)
@@ -27,9 +36,9 @@ let digests = lazy begin
       Filew.with_file_in_bin digests_fn begin fun ch ->
         let arr = Marshal.from_channel ch in
         Array.iter
-          (fun (fn, dig) ->
-             mdbg "loading digest of %S" fn;
-             Hashtbl.replace digests fn (dig, no_digest)
+          (fun (dep, dig) ->
+             mdbg "loading digest of %s" (dump_dep dep);
+             Hashtbl.replace digests dep (dig, no_digest)
           )
           arr
       end
@@ -83,16 +92,24 @@ type status =
 | Not_checked
 
 type rule =
-  { deps : string list
+  { deps : dep list
   ; build_func : unit -> unit
   ; status : status ref
   ; create_dirs : unit -> unit
   ; add_cleanup : unit Lazy.t
   }
 
-let rules = Hashtbl.create 17
+(* "target" -> rule.
+   rationale: virtual dependency can decide by itself which files it needs,
+   so no sense to add it to [rules].
+ *)
+let rules : (string, rule) Hashtbl.t = Hashtbl.create 17
 
-let make ?(clean_files = []) targets deps func =
+(* "имя виртуальной зависимости" -> string (digest)
+ *)
+let virt_deps = Hashtbl.create 17
+
+let make ?(clean_files = []) ?(virtdeps = []) targets deps func =
   let status = ref Not_checked in
   let create_dirs () =
     List.iter create_dirs_for_file targets
@@ -103,11 +120,14 @@ let make ?(clean_files = []) targets deps func =
       then make_error "rule for %S already exists" target
       else
         mdbg "Make: registering target %S with dependencies [%s]"
-          target (String.concat "; " & List.map (sprintf "%S") deps);
+          target
+          (String.concat "; " & List.map (sprintf "%S") deps);
         Hashtbl.add
           rules
           target
-          { deps = deps
+          { deps =
+                List.map (fun d -> Dfile d) deps
+              @ List.map (fun d -> Dvirt d) virtdeps
           ; build_func = func
           ; status = status
           ; create_dirs = create_dirs
@@ -125,32 +145,42 @@ let make1 ?(clean_files = []) target deps func =
 
 let hashtbl_find_opt h k = try Some (Hashtbl.find h k) with Not_found -> None
 
-let does_digest_match fn =
-  match hashtbl_find_opt !!digests fn with
-  | None ->
+let dep_digest dep =
+  match dep with
+  | Dfile fn ->
       if Sys.file_exists fn
-      then begin
-        let current_digest = Digest.file fn in
-        Hashtbl.add !!digests fn (no_digest, current_digest);
-        mdbg "does_digest_match %S: no stored digest, doesn't match" fn;
-        false
-      end else
+      then
+        Digest.file fn
+      else
         make_error "source file %S not found" fn
+  | Dvirt vn ->
+      begin match hashtbl_find_opt virt_deps vn with
+      | None -> make_error "virtual dependency %S is not declared" vn
+      | Some dig -> dig
+      end
+
+let does_digest_match dep =
+  match hashtbl_find_opt !!digests dep with
+  | None ->
+      Hashtbl.add !!digests dep (no_digest, dep_digest dep);
+      mdbg "does_digest_match %S: no stored digest, doesn't match"
+        (dump_dep dep);
+      false
   | Some (old_dig, new_dig) ->
       let new_dig =
         if new_dig == no_digest
         then begin
-          mdbg "does_digest_match %S:   no new digest" fn;
-          let current_digest = Digest.file fn in
-          Hashtbl.replace !!digests fn (old_dig, current_digest);
+          mdbg "does_digest_match %S:   no new digest" (dump_dep dep);
+          let current_digest = dep_digest dep in
+          Hashtbl.replace !!digests dep (old_dig, current_digest);
           current_digest
         end else begin
-          mdbg "does_digest_match %S:   has new digest" fn;
+          mdbg "does_digest_match %S:   has new digest" (dump_dep dep);
           new_dig
         end
       in
         let r = (old_dig = new_dig) in
-        mdbg "does_digest_match %S: %b" fn r;
+        mdbg "does_digest_match %S: %b" (dump_dep dep) r;
         r
 
 type rebuild =
@@ -162,14 +192,15 @@ let add_to_path ~path ~target =
   if List.mem target path
   then
     make_error "circular dependencies: %s" &
-    String.concat " <- " path'
+    String.concat " <- " &
+    path'
   else
     path'
 
 let rec build ~path target =
   match hashtbl_find_opt rules target with
   | None ->
-      let matches = does_digest_match target in
+      let matches = does_digest_match (Dfile target) in
       mdbg "building %S, it's not a target, digest matches? = %b"
         target matches;
       if matches
@@ -192,7 +223,10 @@ let rec build ~path target =
                  *)
                 List.fold_left
                   (fun acc dep ->
-                     (build ~path:path' dep = Rebuild_needed) || acc
+                     (match dep with
+                      | Dfile fn -> build ~path:path' fn = Rebuild_needed
+                      | Dvirt _ -> not (does_digest_match dep)
+                     ) || acc
                   )
                   false
                   r.deps
@@ -201,18 +235,31 @@ let rec build ~path target =
                    not (Sys.file_exists target)
                 || deps_rebuild
               in
-              mdbg "building %S, rebuild_needed? = %b" target rebuild_needed;
+              mdbg "building %S, rebuild_needed? = %b"
+                target rebuild_needed;
               begin
                 if rebuild_needed
                 then begin
                   r.create_dirs ();
+                  Printf.printf "Make: %s <- %s\n%!"
+                    target
+                    (String.concat " " &
+                     List.map (function
+                       | Dfile f -> f
+                       | Dvirt v -> "virt:" ^ v
+                       )
+                       r.deps
+                    );
                   begin
                     try
                       r.build_func ()
                     with
                     | e -> make_error "build failed.  Target: %s, deps: %s, \
                                      exception: %s"
-                        target (String.concat ", " r.deps)
+                        target
+                        (String.concat ", " &
+                         List.map dump_dep r.deps
+                        )
                         (Printexc.to_string e)
                   end;
                   r.status := Actual M_rebuilt
@@ -260,6 +307,6 @@ let dump_deps () =
   Hashtbl.iter
     (fun target rule ->
        printf "%s : %s\n" target
-         (String.concat " " rule.deps)
+         (String.concat ", " & List.map dump_dep rule.deps)
     )
     rules

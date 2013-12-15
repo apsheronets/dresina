@@ -1,0 +1,11 @@
+<h1>Hello from Dresina!</h1>
+
+<p>Now is <%= sprintf "%.0f" env#time %> seconds from unix epoch.</p>
+
+<ul>
+  <% List.iter begin fun str -> %>
+  <li><%= str %></li>
+  <% end env#my_strings; %>
+</ul>
+
+<%=raw link_to "goodbye" Route.Say_controller.Goodbye.path %>

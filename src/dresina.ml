@@ -47,33 +47,8 @@ let () = stage_multi_paths
   ~mlt:"routes.mlt"
   [("routes", "route.ml"); ("routing", "routing.ml")]
 
-let () = Ml_make.glue
-  [ "tpl/internal/main_pre.ml"
-  ; "proj-build/config/routing.ml"
-  ; "tpl/internal/main_post.ml"
-  ]
-  "proj-build/main.ml"
-
-let server_bin = "proj-build/main"
-
-let view_path = "app/views"
-let view_emls = ["say/hello.html.eml"]  (* todo: glob *)
-
-let view_bodies =
-  List.map begin fun eml ->
-      let body_ml = "proj-build" // view_path //
-        change_suffix ~place:".eml -> .body.ml" eml ".eml" ".body.ml" in
-      let eml = "proj" // view_path // eml in
-      Make.make1 body_ml [eml] begin fun () ->
-        sys_command_ok & Printf.sprintf
-          "ecaml -d %s -o %s -p 'Buffer.add_string buf' \
-             -esc-p 'Proj_common.buffer_add_html buf' \
-             -header 'begin' -footer '() end'"
-          (Filename.quote eml) (Filename.quote body_ml)
-        end
-    end
-    view_emls
-
+let server_bin = "dresina-server" (* keep in sync with tpl/Makefile! *)
+let server_path_bin = "proj-build" // server_bin
 
 let con_path = "app/controllers"
 let controllers_mls =
@@ -96,6 +71,7 @@ let () = Ml_make.glue
   ["tpl/internal/proj_common.ml"]
   "proj-build/internal/proj_common.ml"
 
+(* not used now, since using make + ocamldep-sorter to build server
 let _cmx : string = Ml_make.compile_ml_to_obj
   ~pkgs:allpkgs
   ~deps:[]
@@ -120,14 +96,37 @@ let () = Ml_make.compile_mls_to_nat
   ~incl:["proj-build/internal"; "proj-build" // con_path]
   ~pre_objs:(common_objs @ controller_objs)
   [ "config/route.ml"; "main.ml" ]
-  server_bin
+  server_path_bin
+*)
+
+let () = View.register_make_rules ()
+
+let make_copy_from_tpl fn =
+  let src = "tpl" // fn
+  and dst = "proj-build" // fn in
+  Make.make1 dst [src] begin fun () ->
+    Filew.copy_file src dst
+  end
+
+let () =
+  List.iter make_copy_from_tpl
+    ["Makefile"; "internal/main_pre.ml"; "internal/main_post.ml"]
+
+let () = make_copy_from_tpl "internal/viewHelpers.ml"
 
 (***********)
 
+let codegen_action () =
+  Make.do_make ()
+
+let make_action () =
+  codegen_action ();
+  sys_command_ok "make -C proj-build -j"
+
 let run_server () =
-  Make.do_make ();
-  Printf.printf "running server %S...\n%!" server_bin;
-  sys_command_ok server_bin
+  make_action ();
+  Printf.printf "running server %S...\n%!" server_path_bin;
+  sys_command_ok server_path_bin
 
 let default_cmd_action =
   `Help (`Plain, None)
@@ -159,7 +158,17 @@ let dump_deps_cmd =
   Term.(pure Make.dump_deps),
   Term.info "dump-deps" ~doc
 
-let cmds = [server_cmd; clean_cmd; dump_deps_cmd]
+let codegen_cmd =
+  let doc = "generate code" in
+  Term.(pure codegen_action),
+  Term.info "codegen" ~doc
+
+let make_cmd =
+  let doc = "generate code and build server" in
+  Term.(pure make_action),
+  Term.info "make" ~doc
+
+let cmds = [server_cmd; clean_cmd; dump_deps_cmd; codegen_cmd; make_cmd]
 
 let () = match Term.eval_choice default_cmd cmds with
 | `Error _ -> exit 1

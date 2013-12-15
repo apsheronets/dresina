@@ -13,8 +13,11 @@ let
 *)
 
 
-let check_failed ~place txt = invalid_arg "%s: %s" place txt
+let check_failed ~place ?arg txt =
+  invalid_arg "%s: %s%s" place txt
+    (match arg with None -> "" | Some x -> sprintf " (argument: %S)" x)
 
+(* checks from offset 1, first char is checked in caller *)
 let ident_ok n =
   let rec loop i =
     if i = String.length n
@@ -43,22 +46,24 @@ let check_uid ~place n =
     then
       if ident_ok n
       then ()
-      else check_failed ~place "uppercase identifier: bad characters"
-    else check_failed ~place "uppercase identifier must begin with 'A'..'Z'"
+      else check_failed ~place ~arg:n "uppercase identifier: bad characters"
+    else
+      check_failed ~place ~arg:n
+        "uppercase identifier must begin with 'A'..'Z'"
 
 let check_lid ~place n =
   if n = ""
   then
-    check_failed ~place "lowercase identifier can't be empty"
+    check_failed ~place ~arg:n "lowercase identifier can't be empty"
   else
     let c = n.[0] in
     if c >= 'a' && c <= 'z' || c = '_'
     then
       if ident_ok n
       then ()
-      else check_failed ~place "lowercase identifier: bad characters"
+      else check_failed ~place ~arg:n "lowercase identifier: bad characters"
     else
-      check_failed ~place
+      check_failed ~place ~arg:n
         "lowercase identifier must begin with 'a'..'z' or '_'"
 
 module Lit
@@ -208,6 +213,20 @@ module Expr
       end;
       Buffer.contents buf
 
+    let call_gen__ func_name args =
+      sprintf "(%s %s)" func_name &
+        String.concat " " &
+        List.map
+          (fun arg ->
+             if arg = ""
+             then invalid_arg "Expr.call: empty argument"
+             else
+               if arg.[0] = '~' || arg.[0] = '?'
+               then arg
+             else
+               sprintf "(%s)" arg
+          ) args
+
     (* can call non-qualified functions only; without "Module." parts *)
     let call func_name args =
       check_lid ~place:"Codegen.Expr.call" func_name;
@@ -215,9 +234,15 @@ module Expr
       then invalid_arg
         "Codegen.Expr.call: can't call function without arguments"
       else
-      sprintf "(%s %s)" func_name &
-        String.concat " " &
-        List.map (sprintf "(%s)") args
+        call_gen__ func_name args
+
+    (* calls anything specified in [func] argument *)
+    let call_gen func args =
+      if args = []
+      then invalid_arg
+        "Codegen.Expr.call_gen: can't call function without arguments"
+      else
+        call_gen__ (sprintf "(%s)" func) args
 
     let lid n =
       check_lid ~place:"Codegen.Expr.lid" n;
@@ -275,12 +300,12 @@ module Struc
         | Some t -> sprintf " : %s" t
       in
       let body = indent 2 body in
-      sprintf "let %s%s =\n%s\n;;\n"
+      sprintf "let %s%s =\n%s\n"
         name opt_ty body
 
     let func name args body =
       check_lid ~place:"Codegen.Struc.func" name;
-      sprintf "let %s %s =\n%s\n;;\n"
+      sprintf "let %s %s =\n%s\n"
         name
         (String.concat " " args)
         (indent 2 body)

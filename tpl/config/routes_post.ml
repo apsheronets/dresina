@@ -65,6 +65,8 @@ let rec generate_routing_level level =
 
 let generate_routing level =
   rg_dir ^
+  "open Main_pre\n" ^
+  "open Proj_common\n" ^
   Struc.func "routes" ["path"; "conctx"] (generate_routing_level level)
 
 type con_seg_bind =

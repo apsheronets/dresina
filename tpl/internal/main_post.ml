@@ -1,3 +1,6 @@
+open Proj_common
+open Main_pre
+
 let files_root = "public"
 
 (* takes segments of path, urldecodes them, returns [None] if path after
@@ -46,6 +49,8 @@ let serve_file path =
 
 let route_not_found () = respond_404 ()
 
+open Amall_http
+
 let http_root_func path rq =
   let path = List.tl path  (* skipping "host:port" part *) in
   I.lift begin
@@ -64,7 +69,7 @@ let http_root_func path rq =
                 : CONTROLLER_CONTEXT) in
              let route =
                (* there are no IO in "routes", so try-with *)
-               try routes path conctx
+               try Routing.routes path conctx
                with No_route -> __no_route
              in
              if route == __no_route
