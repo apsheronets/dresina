@@ -65,6 +65,7 @@ let http_root_func path rq =
              let conctx =
                (module struct
                   let request = rq
+                  let url_of_path = Proj_common.url_of_path rq
                 end
                 : CONTROLLER_CONTEXT) in
              let route =

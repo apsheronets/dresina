@@ -8,4 +8,11 @@
   <% end env#my_strings; %>
 </ul>
 
-<%=raw link_to "goodbye" Route.Say_controller.Goodbye.path %>
+<% let goodbye = Route.Say_controller.Goodbye.path in %>
+<p>
+  <%=raw link_to "goodbye" goodbye %>
+</p>
+
+<p>
+  Here is absolute url of <%= goodbye %>: <%=raw link_to env#url env#url %>
+</p>

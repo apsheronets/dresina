@@ -44,7 +44,51 @@ module type CONTROLLER_CONTEXT
  =
   sig
     val request : Amall_http.request
+    val url_of_path : string -> string
   end
+
+let url_of_path rq path =
+  let open Uri_type in
+  let path_add_slash path =
+    if String.length path = 0 || path.[0] <> '/'
+    then "/" ^ path
+    else path
+  in
+  let scheme_auth scheme_opt authority_opt =
+    match scheme_opt, authority_opt with
+    | None, _ | Some _, None -> ""
+    | Some s, Some a -> s ^ "://" ^
+        (match a.userinfo with
+         | None -> ""
+         | Some u -> u ^ "@"
+        ) ^
+        (match a.host_kind with
+         | IP_literal -> "[" ^ a.host ^ "]"
+         | IPv4address | Reg_name -> a.host
+        ) ^
+        (match a.port with
+         | None -> ""
+         | Some i -> ":" ^ string_of_int i
+        )
+  in
+  let r = rq.rq_uri in
+  match Uri.parse path with
+  | None ->
+      scheme_auth r.scheme r.authority ^ path_add_slash path
+  | Some path_uri ->
+      let scheme_opt =
+        match path_uri.scheme with
+        | (Some _) as s -> s
+        | None -> r.scheme
+      and authority_opt =
+        match path_uri.authority with
+        | (Some _) as s -> s
+        | None -> r.authority
+      in
+      scheme_auth scheme_opt authority_opt ^
+      path_add_slash path_uri.path ^
+      (match path_uri.query with None -> "" | Some q -> "?" ^ q) ^
+      (match path_uri.fragment with None -> "" | Some f -> "#" ^ f)
 
 let __no_route : unit -> Amall_http.response IO.m =
   fun () -> failwith "dresina: internal error: no route"
