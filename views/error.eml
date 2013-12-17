@@ -1,10 +1,10 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
-    <title>Error 404</title>
+    <title><%= a#title %></title>
     <style type="text/css">
       body {
-        background: url('error-background.png') bottom left no-repeat;
+        background: url('/error-background.png') bottom left no-repeat;
         height: 100%;
         margin: 0;
         padding: 0;
@@ -24,13 +24,10 @@
         font-size: 18pt;
       }
     </style>
-
   </head>
   <body>
     <div class="block">
-      <h1>Error 404</h1>
-      <p>No such page</p>
+      <%=raw a#content %>
     </div>
   </body>
 </html>
-
