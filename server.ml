@@ -1,6 +1,5 @@
 
 open Combinators
-
 open Printf
 open View_helpers
 open Amall_http
@@ -27,31 +26,6 @@ open Http
 let my_handler request =
   catch (fun () -> Bindings.f request)
   (function Bindings_lib.Ok r -> r | e -> fail e)
-
-  (*let rec loop = function
-    | [] -> return send_404
-    | binding::t ->
-        try
-          let route, dest = binding in
-          route#parse dest request
-        with Route_lib.Parse_failed -> loop t in
-  loop Bindings.l*)
-
-let render_500 =
-  let a =
-    object
-      method title = "error 500: Internal Server Error";
-      method content =
-        sprintf "<h1>error 500: Internal Server Error</h1>\n<p>Something happend with our webserver.</p><p>Sorry for that.</p>";
-    end in
-  render (Error.f a)
-
-let send_500 =
-  { rs_status_code = 500
-  ; rs_reason_phrase = "Internal Server Error"
-  ; rs_headers = { rs_all = [] }
-  ; rs_body = Body_string render_500
-  }
 
 let my_func segpath rq =
   let headers =

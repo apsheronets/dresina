@@ -4,7 +4,7 @@ open Lwt
 let bind route dest (request:Http.request) =
   route#parse dest request
 
-let otherwise_send_404 =
+let otherwise_send_404 : Http.request -> Http.response Lwt.t =
   bind (object method parse action _ = action end) (return Http.send_404)
 
 exception Ok of Http.response Lwt.t

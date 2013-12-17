@@ -69,3 +69,20 @@ let send_404 =
   ; rs_body = Body_string render_404
   }
 
+let render_500 =
+  let a =
+    object
+      method title = "error 500: Internal Server Error";
+      method content =
+        sprintf "<h1>error 500: Internal Server Error</h1>\n<p>Something happend with our webserver.</p><p>Sorry for that.</p>";
+    end in
+  render (Error.f a)
+
+let send_500 =
+  { rs_status_code = 500
+  ; rs_reason_phrase = "Internal Server Error"
+  ; rs_headers = { rs_all = [] }
+  ; rs_body = Body_string render_500
+  }
+
+
