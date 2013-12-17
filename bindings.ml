@@ -1,3 +1,4 @@
+(** Application's bindings *)
 
 open Lwt
 open Bindings_lib

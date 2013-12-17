@@ -1,3 +1,4 @@
+(** Application's routes *)
 
 open Route_lib
 

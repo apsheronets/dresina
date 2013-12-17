@@ -1,3 +1,4 @@
+(** The Main Module *)
 
 open Combinators
 open Printf
@@ -5,11 +6,9 @@ open View_helpers
 open Amall_http
 module IO = IO_Lwt
 module I = Iteratees.Make(IO)
-
 open Am_All
 open Amall_types
 open Lwt
-
 module S = Amall_http_service.Service(IO)(I)
 
 let (my_listener, http_root, _ws_root) =
@@ -23,7 +22,7 @@ let my_endpoint =
 
 open Http
 
-let my_handler request =
+let routes request =
   catch (fun () -> Bindings.f request)
   (function Bindings_lib.Ok r -> r | e -> fail e)
 
@@ -49,35 +48,35 @@ let my_func segpath rq =
     | None -> []
     | Some s -> Uri.parse_params s in
   let request = { hostname; segpath; headers } in
-  catch (fun () ->
-    (* should we send a file from public dir? *)
-    match params with
-    | [] ->
-        (let file_exists path =
-          catch
-            (fun () ->
-              Lwt_unix.lstat path >>= fun stats ->
-              match stats.Unix.st_kind with
-              | Unix.S_REG -> return true
-              | _ -> return false)
-            (function _ -> return false) in
-        let absolute_path =
-          Init.public_dir ^/ (List.fold_left Filename.concat "" segpath) in
-        file_exists absolute_path >>= function
-        | true -> Http.send_file absolute_path
-        | false -> my_handler request)
-    | _ -> my_handler request
-  )
-  (fun e ->
-    (* FIXME *)
-    Lwt_io.eprintf "ERROR: Responce failed with %s\n" (Printexc.to_string e) >>= fun () ->
-    Lwt.return send_500)
+
+  (* should we send a file from public dir? *)
+  match params with
+  | [] ->
+      (let file_exists path =
+        catch
+          (fun () ->
+            Lwt_unix.lstat path >>= fun stats ->
+            match stats.Unix.st_kind with
+            | Unix.S_REG -> return true
+            | _ -> return false)
+          (function _ -> return false) in
+      let absolute_path =
+        Init.public_dir ^/ (List.fold_left Filename.concat "" segpath) in
+      file_exists absolute_path >>= function
+      | true -> Http.send_file absolute_path
+      | false -> routes request)
+  | _ -> routes request
 
 let my_func segpath rq =
   I.lift &
-    Lwt_unix.with_timeout
-      Init.timeout
-      (fun () -> my_func segpath rq)
+    catch (fun () ->
+      Lwt_unix.with_timeout
+        Init.timeout
+        (fun () -> my_func segpath rq))
+    (fun e ->
+      (* FIXME *)
+      Lwt_io.eprintf "ERROR: Responce failed with %s\n" (Printexc.to_string e) >>= fun () ->
+      Lwt.return send_500)
 
 let () = S.mount_http my_endpoint my_func
 
