@@ -8,8 +8,10 @@ ml_includes = $(addprefix -I , $(dirs))
 
 lib = -package $(packages)
 common_opts = $(lib) $(ml_includes)
-camlc   = ocamlfind ocamlc   -thread $(common_opts)
-camlopt = ocamlfind ocamlopt -thread $(common_opts)
+comp_opts = -w A
+
+camlc   = ocamlfind ocamlc   -thread $(common_opts) $(comp_opts)
+camlopt = ocamlfind ocamlopt -thread $(common_opts) $(comp_opts)
 camldep = ocamlfind ocamldep         $(common_opts)
 
 objs    = $(files:.ml=.cmo)
