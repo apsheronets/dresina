@@ -1,7 +1,10 @@
 
 (** Useful combinators *)
 
+(** apply value to function: ["hello world" >> print_endline] *)
 let (>>) f g = g f
+
+(** shortcut for Filename.concat *)
 let (^/) = Filename.concat
 let (!!) = Lazy.force
 

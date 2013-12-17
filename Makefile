@@ -8,6 +8,7 @@ name = server
 
 camlc   = ocamlfind ocamlc   $(subdir_includes) -thread $(lib)
 camlopt = ocamlfind ocamlopt $(subdir_includes) -thread $(lib)
+camldoc = ocamlfind ocamldoc $(subdir_includes) -thread $(lib)
 camldep = ocamlfind ocamldep
 lib = -package $(packages)
 
@@ -30,6 +31,12 @@ $(name): $(optobjs)
 	$(camlc) -c $<
 .ml.cmx:
 	$(camlopt) -c $<
+
+.PHONY: doc
+
+doc: $(objs) $(files)
+	-mkdir -p doc
+	$(camldoc) -html -keep-code -d doc/ -charset utf-8 $(files)
 
 clean:
 	-rm -f *.cm[ioxa] *.cmx[as] *.o *.a *~

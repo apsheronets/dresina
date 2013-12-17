@@ -19,7 +19,6 @@ let http_header_of_mtime mtime : http_header =
   let rfc822 = rfc822_of_calendar c in
   ("Last-Modified", rfc822)
 
-
 (* high level *)
 let send_file ?content_type path =
   let rs_all = [] in
