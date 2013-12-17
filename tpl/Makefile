@@ -1,5 +1,5 @@
 name = dresina-server
-packages = amall,amall.dbi,threads
+packages = amall,amall.dbi,threads,lwt,lwt.preemptive
 
 topdirs = app config internal
 files = $(shell find $(topdirs) -name '*.ml')

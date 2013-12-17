@@ -33,11 +33,7 @@ let () = stage_paths
   ~pre:["database_pre.ml"]
   ~post:["database_post.ml"]
   ~mlt:"database.mlt"
-  "database.ml"
-
-(*
-let () = compile_byt ~pkgs:dbpkgs "proj-build/config/database.ml"
-*)
+  "database_config.ml"
 
 let () = stage_multi_paths
   ~pkgs:webpkgs
@@ -110,7 +106,12 @@ let make_copy_from_tpl fn =
 
 let () =
   List.iter make_copy_from_tpl
-    ["Makefile"; "internal/main_pre.ml"; "internal/main_post.ml"]
+    [ "Makefile"; "internal/main_pre.ml"; "internal/main_post.ml"
+    ]
+
+let () = Ml_make.glue
+  ["tpl/internal/database.ml"]
+  "proj-build/internal/database.ml"
 
 let () = make_copy_from_tpl "internal/viewHelpers.ml"
 

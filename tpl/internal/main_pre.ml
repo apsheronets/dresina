@@ -12,3 +12,11 @@ let http_root_endpoint =
 open Amall_http
 
 exception No_route
+
+let () = Database_config.register ()
+
+(*
+let () = Lwt.ignore_result &
+  Database.with_connection & fun c ->
+    ignore c
+*)

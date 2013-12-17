@@ -1,5 +1,7 @@
 module IO = IO_Lwt
 
+let ( !! ) = Lazy.force
+
 let ( >>= ) = Lwt.bind
 
 module I = Iteratees.Make(IO)
