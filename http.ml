@@ -52,6 +52,7 @@ let send_ok_with ?(headers=[]) ?content_type body : response =
   }
 
 open View_helpers
+open Printf
 
 let render_404 =
   let a =
