@@ -30,6 +30,10 @@ let urldecode = Cd_Strings.Strings.Onebyte.urldecode
 (** converts ["хуй"] into ["%D1%85%D1%83%D0%B9"] *)
 let urlencode = Cd_Strings.Strings.Onebyte.urlencode
 
+(** [link_to url inner_text] renders [a] tag; no need to escape anything *)
+let link_to url inner =
+  Printf.sprintf "<a href=\"%s\">%s</a>" (esc url) (esc inner)
+
 open Printf
 
 (** renders view template into string

@@ -27,7 +27,6 @@ let path (path:string) =
   object
     method path = path
     method parse action (request:Http.request) : Http.response Lwt.t =
-      print_endline (String.concat "/" request.segpath);
       if String.concat "/" request.segpath = path
       then action request
       else raise Parse_failed

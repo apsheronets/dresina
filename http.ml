@@ -1,3 +1,4 @@
+(** Basic types for requests and responses *)
 
 open Combinators
 open Amall_http

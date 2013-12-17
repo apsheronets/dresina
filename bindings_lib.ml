@@ -1,13 +1,17 @@
 
-let bind x y = fun () -> (x, y)
+open Lwt
 
-let parse_route request binding =
-  let route, dest = binding in
+let bind route dest (request:Http.request) =
   route#parse dest request
 
-let comb request f1 f2 =
+let otherwise_send_404 =
+  bind (object method parse action _ = action end) (return Http.send_404)
+
+exception Ok of Http.response Lwt.t
+
+let (>>=) f1 f2 (request:Http.request) =
   try
-    parse_route request (f1 ())
-  with Route_lib.Parse_failed ->
-    parse_route request (f2 ())
+    let r = f1 request in
+    raise (Ok r)
+  with Route_lib.Parse_failed -> f2 request
 

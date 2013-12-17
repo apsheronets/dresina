@@ -26,7 +26,7 @@ open Http
 
 let my_handler request =
   catch (fun () -> Bindings.f request)
-  (function Route_lib.Parse_failed -> return send_404 | e -> fail e)
+  (function Bindings_lib.Ok r -> r | e -> fail e)
 
   (*let rec loop = function
     | [] -> return send_404
@@ -89,8 +89,6 @@ let my_func segpath rq =
             (function _ -> return false) in
         let absolute_path =
           Init.public_dir ^/ (List.fold_left Filename.concat "" segpath) in
-        (* FIXME *)
-        Lwt_io.printl absolute_path >>= fun () ->
         file_exists absolute_path >>= function
         | true -> Http.send_file absolute_path
         | false -> my_handler request)

@@ -7,4 +7,5 @@
 *.cmx
 *.cmxs
 *.cmxa
+*.depend
 doc/
