@@ -8,8 +8,9 @@ type http_header = string * string
 
 type request = {
   hostname: string;
-  segpath: string list;
-  headers: http_header list;
+  segpath: string list; (** segments of an URL: [/one/two/three] *)
+  headers: http_header list; (** incoming http headers *)
+  params: (string * string) list; (** query params: [?key=value] *)
 }
 
 let rfc822_of_calendar c =

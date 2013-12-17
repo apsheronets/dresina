@@ -27,30 +27,32 @@ let routes request =
   (function Bindings_lib.Ok r -> r | e -> fail e)
 
 let my_func segpath rq =
-  let headers =
-    rq.rq_headers.rq_all in
-  let (hostname, segpath) =
-    match segpath with
-    | _ :: hostname :: t -> (hostname, t)
-    | _ -> assert false in
-  let hostname =
-    match !Init.default_host with
-    | "" -> hostname
-    | s -> s in
-  let segpath =
-    segpath >>
-    List.filter (function "" -> false | _ -> true) >>
-    List.map Cd_Strings.Strings.Onebyte.urldecode >>
-    (* stupid dtfilter *)
-    List.filter (fun x -> not (ExtLib.String.exists x "..")) in
-  let params =
-    match rq.rq_uri.Uri_type.query with
-    | None -> []
-    | Some s -> Uri.parse_params s in
-  let request = { hostname; segpath; headers } in
+
+  let request =
+    let headers =
+      rq.rq_headers.rq_all in
+    let (hostname, segpath) =
+      match segpath with
+      | _ :: hostname :: t -> (hostname, t)
+      | _ -> assert false in
+    let hostname =
+      match !Init.default_host with
+      | "" -> hostname
+      | s -> s in
+    let segpath =
+      segpath >>
+      List.filter (function "" -> false | _ -> true) >>
+      List.map Cd_Strings.Strings.Onebyte.urldecode >>
+      (* stupid dtfilter *)
+      List.filter (fun x -> not (ExtLib.String.exists x "..")) in
+    let params =
+      match rq.rq_uri.Uri_type.query with
+      | None -> []
+      | Some s -> Uri.parse_params s in
+    { hostname; segpath; headers; params } in
 
   (* should we send a file from public dir? *)
-  match params with
+  match request.params with
   | [] ->
       (let file_exists path =
         catch
