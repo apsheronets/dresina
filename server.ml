@@ -26,6 +26,30 @@ let routes request =
   catch (fun () -> Bindings.f request)
   (function Bindings_lib.Ok r -> r | e -> fail e)
 
+let serve_static_first request =
+  (* should we send a file from public dir? *)
+  match request.params with
+  | [] ->
+      (let file_exists path =
+        catch
+          (fun () ->
+            Lwt_unix.lstat path >>= fun stats ->
+            match stats.Unix.st_kind with
+            | Unix.S_REG -> return true
+            | _ -> return false)
+          (function _ -> return false) in
+      let absolute_path =
+        Init.public_dir ^/ (List.fold_left Filename.concat "" request.segpath) in
+      file_exists absolute_path >>= function
+      | true -> Http.send_file absolute_path
+      | false -> routes request)
+  | _ -> routes request
+
+let my_func =
+  if !Init.serve_static
+  then serve_static_first
+  else routes
+
 let my_func segpath rq =
 
   let request =
@@ -51,23 +75,7 @@ let my_func segpath rq =
       | Some s -> Uri.parse_params s in
     { hostname; segpath; headers; params } in
 
-  (* should we send a file from public dir? *)
-  match request.params with
-  | [] ->
-      (let file_exists path =
-        catch
-          (fun () ->
-            Lwt_unix.lstat path >>= fun stats ->
-            match stats.Unix.st_kind with
-            | Unix.S_REG -> return true
-            | _ -> return false)
-          (function _ -> return false) in
-      let absolute_path =
-        Init.public_dir ^/ (List.fold_left Filename.concat "" segpath) in
-      file_exists absolute_path >>= function
-      | true -> Http.send_file absolute_path
-      | false -> routes request)
-  | _ -> routes request
+  my_func request
 
 let my_func segpath rq =
   I.lift &
