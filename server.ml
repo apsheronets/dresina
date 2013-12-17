@@ -2,7 +2,7 @@
 open Combinators
 
 open Printf
-open Views
+open View_helpers
 open Amall_http
 module IO = IO_Lwt
 module I = Iteratees.Make(IO)
@@ -24,7 +24,18 @@ let my_endpoint =
 
 open Http
 
-let my_handler request = fail (Failure "not implemented yet, sorry")
+let my_handler request =
+  catch (fun () -> Bindings.f request)
+  (function Route_lib.Parse_failed -> return send_404 | e -> fail e)
+
+  (*let rec loop = function
+    | [] -> return send_404
+    | binding::t ->
+        try
+          let route, dest = binding in
+          route#parse dest request
+        with Route_lib.Parse_failed -> loop t in
+  loop Bindings.l*)
 
 let render_500 =
   let a =
