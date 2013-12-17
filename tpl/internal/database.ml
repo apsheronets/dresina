@@ -4,6 +4,7 @@ open Dbi_pg
 
 type conn_pool_info =
   { conn_info : unit -> conn_info
+  ; schema : string option
   ; pool : int
   }
 
@@ -15,12 +16,35 @@ let conn_pool_info = lazy begin
   | Some i -> i
 end
 
+let check_not_contains ~desc_char ~ch ~desc_str ~str =
+  match str with
+  | None -> ()
+  | Some str ->
+      if String.contains str ch
+      then failwith
+        (sprintf "database configuration error: ~%s can't contain %s"
+           desc_str desc_char)
+      else ()
+
+let check_no_quot = check_not_contains ~desc_char:"double quotes" ~ch:'"'
+let check_no_apos = check_not_contains ~desc_char:"apostrophes" ~ch:'\''
+
 let register ?host ?port ?dbname ?user ?password
   ?options ?requiressl ?tty
   ?conninfo
   ?(pool = 5)
+  ?schema
   ()
  =
+  check_no_quot ~str:user ~desc_str:"user";
+  check_no_apos ~str:password ~desc_str:"password";
+  check_no_quot ~str:dbname ~desc_str:"dbname";
+  let schema =
+    match schema with
+    | None -> user
+    | Some _ -> schema
+  in
+  check_no_quot ~str:schema ~desc_str:"schema";
   ref_conn_pool_info := Some
     { conn_info = begin fun () -> ((new conn_info
         ?host ?port ?dbname ?user ?password
@@ -29,6 +53,7 @@ let register ?host ?port ?dbname ?user ?password
         ()   ) : conn_info)
       end
     ; pool = pool
+    ; schema = schema
     }
 
 let pool = lazy begin
@@ -36,7 +61,11 @@ let pool = lazy begin
     (!!conn_pool_info).pool
     (fun () ->
        Lwt_preemptive.detach
-         (fun () -> new connection ((!!conn_pool_info).conn_info ()))
+         (fun () ->
+            let conn = new connection ((!!conn_pool_info).conn_info ()) in
+            (* let () = conn#execute "set search_path = schema, public" in *)
+            conn
+         )
          ()
     )
 end

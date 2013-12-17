@@ -81,6 +81,23 @@ let http_root_func path rq =
         )
   end
 
-let () =
+let server () =
   S.mount_http http_root_endpoint http_root_func;
   S.listener_run my_listener
+
+let usage () =
+  print_string "\
+usage:\n\
+\  -h | --help | help  --  this message\n\
+\  without arguments or with \"server\" command  --  run web server\n\
+\  db:create  --  create database based on this project's database configuration\n\
+"
+
+let () =
+  match List.tl (Array.to_list Sys.argv) with
+  | [] | "server" :: _ -> server ()
+  | ("--help" | "-h" | "help") :: _ -> usage ()
+  | "db:create" :: _ -> Command_db_create.db_create ()
+  | _ ->
+      Printf.eprintf "%s: invalid command line\n%!" Sys.argv.(0);
+      usage ()
