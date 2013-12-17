@@ -75,7 +75,7 @@ let render_500 =
     object
       method title = "error 500: Internal Server Error";
       method content =
-        sprintf "<h1>error 500: Internal Server Error</h1>\n<p>Something happend with our webserver.</p><p>Sorry for that.</p>";
+        sprintf "<h1>error 500: Internal Server Error</h1>\n<p>Something happened with our webserver.</p><p>Sorry for that.</p>";
     end in
   render (Error.f a)
 
