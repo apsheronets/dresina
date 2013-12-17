@@ -114,8 +114,16 @@ let () = Ml_make.glue
   "proj-build/internal/database.ml"
 
 let () = Ml_make.glue
+  ["tpl/internal/psql.ml"]
+  "proj-build/internal/psql.ml"
+
+let () = Ml_make.glue
   ["tpl/internal/command_db_create.ml"]
   "proj-build/internal/command_db_create.ml"
+
+let () = Ml_make.glue
+  ["tpl/internal/command_db_drop.ml"]
+  "proj-build/internal/command_db_drop.ml"
 
 let () = make_copy_from_tpl "internal/viewHelpers.ml"
 

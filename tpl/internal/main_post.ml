@@ -98,6 +98,7 @@ let () =
   | [] | "server" :: _ -> server ()
   | ("--help" | "-h" | "help") :: _ -> usage ()
   | "db:create" :: _ -> Command_db_create.db_create ()
+  | "db:drop" :: _ -> Command_db_drop.db_drop ()
   | _ ->
       Printf.eprintf "%s: invalid command line\n%!" Sys.argv.(0);
       usage ()

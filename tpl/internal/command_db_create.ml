@@ -2,6 +2,7 @@ open Proj_common
 open Database
 open Database_config
 open Printf
+open Psql
 
 let of_opt name opt_v =
   match opt_v with
@@ -11,7 +12,7 @@ let of_opt name opt_v =
       name)
   | Some v -> v
 
-let db_create () =
+let db_create () : unit =
   let cpi = !!conn_pool_info in
   let ci = cpi.conn_info () in
   let host = of_opt "host" ci#host in
@@ -32,22 +33,4 @@ let db_create () =
     schema
     schema user
   in
-  let psql_cmd ~user = sprintf
-    "psql -h %s -U %s -d postgres %s"
-    (Filename.quote host)
-    (Filename.quote user)
-    (match port_opt with
-     | None -> ""
-     | Some p -> "-p " ^ Filename.quote p
-    )
-  in
-  Printf.printf
-    "NOTE: if you are running this command not under 'postgres' OS user,\n\
-    \      you will be asked for 'postgres' database user password.\n%!";
-  let run_sql ~user ~sql =
-    let psql_ch = Unix.open_process_out (psql_cmd ~user) in
-    output_string psql_ch sql;
-    flush psql_ch;
-    ignore (Unix.close_process_out psql_ch)
-  in
-  run_sql ~user:"postgres" ~sql:admin_sql
+  run_sql ~user:"postgres" ~sql:admin_sql ~host ~port_opt
