@@ -63,7 +63,15 @@ let pool = lazy begin
        Lwt_preemptive.detach
          (fun () ->
             let conn = new connection ((!!conn_pool_info).conn_info ()) in
-            (* let () = conn#execute "set search_path = schema, public" in *)
+            begin match (!!conn_pool_info).schema with
+            | None -> ()
+            | Some s ->
+                let (_ : Dbi_pg.result) = conn#execute (sprintf
+                  "set search_path = \"%s\", public"
+                  s
+                  )
+                in ()
+            end;
             conn
          )
          ()
@@ -73,5 +81,11 @@ end
 let with_connection f =
   Lwt_pool.use !!pool
     (fun conn ->
-       Lwt_preemptive.detach f conn
+       Lwt_preemptive.detach
+         (fun c -> try `Ok (f c) with e -> `Error e)
+         conn
     )
+  >>= fun res ->
+  match res with
+  | `Ok r -> IO.return r
+  | `Error e -> IO.error e

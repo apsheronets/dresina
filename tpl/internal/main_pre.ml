@@ -17,6 +17,10 @@ let () = Database_config.register ()
 
 (*
 let () = Lwt.ignore_result &
-  Database.with_connection & fun c ->
-    ignore c
+  (IO.catch (fun () ->
+   Database.with_connection & fun c ->
+     let () = Dbi_pg.cmd_ok & c#execute "create table asd (i int)" in ()
+   )
+   (fun e -> Printf.eprintf "asd: %s\n%!" (Printexc.to_string e); IO.return ())
+  )
 *)
