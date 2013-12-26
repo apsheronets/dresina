@@ -14,6 +14,16 @@ let glue mls out =
     Ml_comp.copy_mls_to_ml ~out ~files:mls
   end
 
+let wrap_in_module ~m src dst =
+  Codegen.check_uid ~place:"Ml_make.wrap_in_module" m;
+  Make.make1 dst [src] begin fun () ->
+    Filew.with_file_out_bin dst begin fun out_ch ->
+      Printf.fprintf out_ch "module %s = struct\n" m;
+      Ml_comp.copy_ml_to_channel ~out_ch src;
+      output_string out_ch "end;;\n"
+    end
+  end
+
 let compile_objs_to_nat ?(pkgs = []) ?(incl = []) objs nat =
   Make.make1 nat objs begin fun () ->
     sys_command_ok & sprintf 

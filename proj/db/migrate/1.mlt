@@ -1,3 +1,41 @@
 % create_table test
-% column int_attr integer
-% column str_attr string
+  % column int_attr integer notnull
+  % column str_attr string null
+  % reference test null
+  % reference other_test_id test null
+
+% add_column test bool_attr boolean notnull
+
+% drop_column test bool_attr
+
+% modify_reference test test notnull
+
+% modify_reference test other_test_id test notnull
+
+% add_reference test one_more_test_id test null
+
+% rename_reference test one_more_test_id test one_more_test_id1
+
+% drop_reference test one_more_test_id1 test
+
+% create_index test int_attr,str_attr
+
+% drop_index test int_attr,str_attr
+
+% begin up_sql
+    select up_sql_no
+% end
+
+% begin down_sql
+    select down_sql_no
+% end
+
+% begin up_ocaml
+    ignore conn'''up
+% end
+
+% begin down_ocaml
+    ignore conn'''down
+% end
+
+% drop_table test

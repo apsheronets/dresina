@@ -3,3 +3,4 @@
 ^setup\.(log|data)$
 ^proj-build/
 ^tpl/db/migrate/migrate_types\.ml$
+^proj/db/migrate/0_initial\.mlt$

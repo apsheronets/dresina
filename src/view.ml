@@ -84,8 +84,6 @@ let view_desc ~cntr ~fname =
     None
   end
 
-let readdir_list = Sys.readdir @> Array.to_list
-
 let views_and_layouts : view list =
   List.sort compare_view &
   List.flatten &
@@ -109,12 +107,12 @@ let (layouts, views) =
 
 let views_dst = List.map (fun v -> v.make v) views
 
-let views_ml = "proj-build/internal/views.ml"
+let views_ml = "proj-build/internal/server/views.ml"
 and views_modname = "Views"
 
 let () = Make.make1 views_ml views_dst begin fun () ->
   Filew.with_file_out_bin views_ml begin fun out_ch ->
-    Ml_comp.copy_ml_to_channel ~out_ch "tpl/internal/views_pre.ml";
+    Ml_comp.copy_ml_to_channel ~out_ch "tpl/internal/common/views_pre.ml";
     List.iter begin fun view_dst ->
         Filew.with_file_in_bin view_dst begin fun in_ch ->
           Filew.copy_channels ~bufsz:60000 in_ch out_ch
@@ -125,13 +123,6 @@ let () = Make.make1 views_ml views_dst begin fun () ->
   end
 end
 
-let digest_string = Digest.(string @> to_hex)
-
-let digest_string_list l =
-  digest_string &
-  String.concat "" &
-  List.map digest_string l
-
 let () =
   let cntr_view_list = List.map (fun v -> (v.cntr, v.view)) views in
   let dep_views = "VIEWS" in
@@ -141,7 +132,7 @@ let () =
       (fun (cntr, view) -> cntr ^ "/" ^ view)
       cntr_view_list
   end;
-  let dst = "proj-build/internal/respond_with_view.ml" in
+  let dst = "proj-build/internal/server/respond_with_view.ml" in
   Make.make [dst] ~virtdeps:[dep_views] [] begin fun () ->
     let contents =
       Cg.line_directive "__respond_with_view__" 1 ^

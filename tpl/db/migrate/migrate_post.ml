@@ -24,11 +24,21 @@ let dump_context ctx =
 *)
 
 let do_generate migration =
-  Struc.expr ~ty:"unit" "()" begin
-    Expr.call "register_migration"
-      [ Lit.string
-          (Filename.chop_suffix (Filename.basename __mlt_filename) ".mlt")
-      ; Expr.list (List.map ml_of_migration_item migration)
+  let fname = Filename.chop_suffix (Filename.basename __mlt_filename) ".mlt" in
+  let (mig_id, _, _) = String.split_by_first
+    (function '0'..'9' -> false | _ -> true)
+    fname
+  in
+  if mig_id = ""
+  then
+    failwith "migration source filename must begin with digits that form its \
+              migration identifier, while file has name %S" fname
+  else
+  "open Migrate_types\n" ^
+  Struc.func "register" ["()"] begin
+    Expr.call_gen ~newlines:true "Migrations.register_migration"
+      [ Lit.string mig_id
+      ; Expr.list (List.map ml_of_migration_loc migration)
       ]
   end
 

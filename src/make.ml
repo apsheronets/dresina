@@ -6,10 +6,10 @@ exception Make_exn of string
 
 let make_error fmt = ksprintf (fun s -> raise (Make_exn s)) fmt
 
-(*
 let mdbg fmt = (ksprintf (fun s -> eprintf "MK: %s\n%!" s) fmt)
-*)
+(*
 let mdbg fmt = ifprintf stdout fmt
+*)
 
 let no_digest = "\x00"
 

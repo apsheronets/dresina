@@ -1,0 +1,68 @@
+% create_type boolean bool
+
+% begin pg_of_string boolean
+    function
+    | "t" -> true
+    | "f" -> false
+    | s -> raise (Db_of_string ("boolean", s))
+% end
+
+% begin pg_to_string boolean
+    function
+    | true -> "t"
+    | false -> "f"
+% end
+
+% pg_ddl boolean boolean
+
+
+% create_type string string
+
+% begin pg_of_string string
+    fun s -> s
+% end
+
+% begin pg_to_string string
+    fun s -> s
+% end
+
+% pg_ddl string "varchar(255)"
+
+
+% inherit_type text string
+
+% pg_ddl text text
+
+
+% create_type bigint int64
+
+% begin pg_of_string bigint
+    fun s ->
+      try Int64.of_string s
+      with Failure _ -> raise (Db_of_string ("bigint", s))
+% end
+
+% begin pg_to_string bigint
+    Int64.to_string
+% end
+
+% pg_ddl bigint bigint
+
+
+% inherit_type id bigint
+
+
+% create_type integer int
+
+% begin pg_of_string integer
+    fun s ->
+      try int_of_string s
+      with Failure _ -> raise (Db_of_string ("int", s))
+% end
+
+% begin pg_to_string integer
+    string_of_int
+% end
+
+% pg_ddl integer integer
+

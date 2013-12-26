@@ -2,8 +2,8 @@ open Cd_All
 open Strings.Latin1
 open Printf
 
-let failwith fmt = Printf.ksprintf failwith fmt
-let invalid_arg fmt = Printf.ksprintf invalid_arg fmt
+let failwith fmt = Printf.ksprintf Pervasives.failwith fmt
+let invalid_arg fmt = Printf.ksprintf Pervasives.invalid_arg fmt
 let dbg fmt = Printf.ksprintf (fun s -> Printf.eprintf "DBG: %s\n%!" s) fmt
 
 (*
@@ -71,11 +71,15 @@ module Lit
   struct
     let string s = "\"" ^ String.escaped s ^ "\""
     let int = string_of_int
+    let bool = function
+      | true -> "true"
+      | false -> "false"
   end
 
 (* for ml_of_* : *)
 let ml_of_string = Lit.string
 let ml_of_int = Lit.int
+let ml_of_bool = Lit.bool
 
 let codegen_cur_indent = ref 0
 let do_indent ml =
@@ -213,9 +217,8 @@ module Expr
       end;
       Buffer.contents buf
 
-    let call_gen__ func_name args =
-      sprintf "(%s %s)" func_name &
-        String.concat " " &
+    let call_gen__ ?(newlines=false) func_name args =
+      let args =
         List.map
           (fun arg ->
              if arg = ""
@@ -226,23 +229,30 @@ module Expr
              else
                sprintf "(%s)" arg
           ) args
+      in
+      if newlines
+      then
+        sprintf "(%s\n%s\n)\n" func_name & String.concat "\n" &
+          List.map (indent 3) args
+      else
+        sprintf "(%s %s)" func_name & String.concat " " args
 
     (* can call non-qualified functions only; without "Module." parts *)
-    let call func_name args =
+    let call ?(newlines=false) func_name args =
       check_lid ~place:"Codegen.Expr.call" func_name;
       if args = []
       then invalid_arg
         "Codegen.Expr.call: can't call function without arguments"
       else
-        call_gen__ func_name args
+        call_gen__ ~newlines func_name args
 
     (* calls anything specified in [func] argument *)
-    let call_gen func args =
+    let call_gen ?(newlines=false) func args =
       if args = []
       then invalid_arg
         "Codegen.Expr.call_gen: can't call function without arguments"
       else
-        call_gen__ (sprintf "(%s)" func) args
+        call_gen__ ~newlines (sprintf "(%s)" func) args
 
     let lid n =
       check_lid ~place:"Codegen.Expr.lid" n;

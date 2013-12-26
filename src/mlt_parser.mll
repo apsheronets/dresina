@@ -31,12 +31,14 @@ let dir_code fname lineno code =
 
 let space = [ '\x20' '\x09' ]
 let eol = '\r'? '\n'
+let eol_char = [ '\n' '\r' ]
 let dir = space* '%' space*
 let dir_comment = space* '#' space*
-let linechar = [ '\000' - '\255' ] # [ '\n' '\r' ]
+let linechar = [ '\000' - '\255' ] # eol_char
+let linechar_no_quote = linechar # [ '"' ]
 let not_directive_beginning =
   (
-     (linechar # ['#' '%'])
+     (linechar # ['#' '%'] # space)
    |
      ( '#'
        space*
@@ -166,6 +168,12 @@ and dir_args rev_acc fname lineno = parse
       dir_args (Cg.Lit.string str :: rev_acc) fname lineno lexbuf
     }
 
+| '"'
+    {
+      let str = quoted_string fname lineno lexbuf in
+      dir_args (Cg.Lit.string str :: rev_acc) fname lineno lexbuf
+    }
+
 | space
     {
       assert false
@@ -179,6 +187,28 @@ and dir_args rev_acc fname lineno = parse
       )
     }
 
+(* must eat closing quote and spaces after it.
+   escaping must be somewhere here.
+ *)
+and quoted_string fname lineno = parse
+
+  (linechar_no_quote* as str) '"' space*
+    {
+      str
+    }
+
+| linechar_no_quote* eol_char
+    {
+      failwith (Printf.sprintf
+        "file %S, line %i: quote must be closed before end-of-line"
+        fname lineno
+      )
+    }
+
+| ""
+    {
+      assert false
+    }
 
 and body_end lineno = parse
 

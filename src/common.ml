@@ -1,3 +1,5 @@
+open Cd_All
+
 let failwith fmt = Printf.ksprintf failwith fmt
 
 let dbg fmt = Printf.ksprintf (fun s -> Printf.eprintf "DBG: %s\n%!" s) fmt
@@ -27,3 +29,12 @@ let sys_command_ok cmd =
   if errc = 0
   then ()
   else failwith "Command failed, error code %i: %s\n%!" errc cmd
+
+let readdir_list = Sys.readdir @> Array.to_list
+
+let digest_string = Digest.(string @> to_hex)
+
+let digest_string_list l =
+  digest_string &
+  String.concat "" &
+  List.map digest_string l

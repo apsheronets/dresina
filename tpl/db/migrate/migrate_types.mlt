@@ -1,6 +1,23 @@
+% sum_type column_modification
+  % sum_constr Cm_set_nullable
+    % sum_arg bool
+  % sum_constr Cm_set_type
+    % sum_arg string
+
+% sum_type column_kind
+  % sum_constr Ck_pk
+  % sum_constr Ck_attr
+  % sum_constr Ck_fk
+    % sum_arg string
+
 % record_type column_def
   % field cd_name string
   % field cd_type string
+  % field cd_nullable bool
+  % field cd_kind column_kind
+
+% alias index_expr string
+
 % flush
 
 type column_def_list = column_def list
@@ -8,10 +25,74 @@ type column_def_list = column_def list
 let ml_of_column_def_list lst =
   Expr.list (List.map ml_of_column_def lst)
 
+% record_type column_ref
+  % field cr_table string
+  % field cr_column string
+  % field cr_kind column_kind
+
 % record_type table_def
   % field td_name string
   % field td_columns column_def_list
 
+% sum_type migration_direction
+  % sum_constr Md_up
+  % sum_constr Md_down
+
+% sum_type migration_language
+  % sum_constr Ml_sql
+  % sum_constr Ml_ocaml
+
 % sum_type migration_item
   % sum_constr Create_table
     % sum_arg table_def
+  % sum_constr Drop_table
+    % sum_arg string
+  % sum_constr Add_column
+    % sum_arg string
+    % sum_arg column_def
+  % sum_constr Drop_column
+    % sum_arg column_ref
+  % sum_constr Create_index
+    % sum_arg string
+    % sum_arg index_expr
+  % sum_constr Drop_index
+    % sum_arg string
+    % sum_arg index_expr
+  % sum_constr Rename_table
+    % sum_arg string
+    % sum_arg string
+  % sum_constr Rename_column
+    % sum_arg column_ref
+    % sum_arg string
+  % sum_constr Modify_column
+    % sum_arg column_ref
+    % sum_arg column_modification
+  % sum_constr Generic
+    % sum_arg migration_direction
+    % sum_arg migration_language
+    % sum_arg string
+
+  % sum_constr Create_type
+    % sum_arg string
+    % sum_arg string
+  % sum_constr Pg_of_string
+    % sum_arg string
+    % sum_arg string
+  % sum_constr Pg_to_string
+    % sum_arg string
+    % sum_arg string
+  % sum_constr Pg_ddl
+    % sum_arg string
+    % sum_arg string
+  % sum_constr Inherit_type
+    % sum_arg string
+    % sum_arg string
+% flush
+
+type loc = (string * int)
+
+let ml_of_loc (fname, lineno) = Tuple.constr [Lit.string fname; Lit.int lineno]
+
+% record_type migration_loc
+  % field ml_loc loc
+  % field ml_item migration_item

@@ -167,6 +167,7 @@ let dir_with_loc =
  ;; \n\
  let __dir_fname = ref \"\" and __dir_lineno = ref 0;; \n\
  let directive_linedir () = line_directive !__dir_fname !__dir_lineno;; \n\
+ let directive_loc () = (!__dir_fname, !__dir_lineno);; \n\
  let dir_with_loc fname lineno dir ctx = \n\
   __dir_fname := fname; __dir_lineno := lineno; \n\
    try dir ctx with e -> \n\
@@ -252,7 +253,11 @@ let stage_multi_paths ?(pkgs = []) ~rel_path ~mlt ~pre ~post targets =
   and targets =
     List.map
       (fun (output_suffix, target) ->
-         (output_suffix, "proj-build" // rel_path // target)
+         ( output_suffix
+         , if has_slash target
+           then target
+           else "proj-build" // rel_path // target
+         )
       )
       targets
   in

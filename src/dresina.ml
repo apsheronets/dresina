@@ -8,24 +8,18 @@ let dbpkgs = ["amall.dbi"]
 let webpkgs = ["amall"]
 let allpkgs = List.uniq ~eq:String.eq (dbpkgs @ webpkgs)
 
-let () = stage
-  ~pre:["tpl/internal/ocaml_type_gen_pre.ml"]
-  ~post:["tpl/internal/ocaml_type_gen_post.ml"]
-  ~mlt:"tpl/db/migrate/migrate_types.mlt"
-  "tpl/db/migrate/migrate_types.ml"
+let () = Ml_make.wrap_in_module ~m:"Tagged_marshal"
+  "proj-build/internal/common/tagged_marshal.ml"
+  "proj-build/internal/common/tagged_marshal.ml.module"
 
-let () = stage_paths
-  ~rel_path:"db/migrate"
-  ~pre:["migrate_types.ml"; "migrate_pre.ml"]
-  ~post:["migrate_post.ml"]
-  ~mlt:"1.mlt"
-  "1.ml"
+let () =
+  let src = "src/codegen.ml"
+  and dst = "proj-build/internal/common/codegen.ml" in
+  Ml_make.glue [src] dst
 
-(*
-let () = copy_mls_to_ml
-  ~files:["tpl/config/database_pre.ml"; "proj/config/database.ml"]
-  ~out:"proj-build/config/database.ml"
-*)
+let () = Ml_make.wrap_in_module ~m:"Codegen"
+  "proj-build/internal/common/codegen.ml"
+  "proj-build/internal/common/codegen.ml.module"
 
 let () = stage_paths
   ~pkgs:dbpkgs
@@ -63,69 +57,35 @@ let () = List.iter
   )
   controllers_mls
 
-let () = Ml_make.glue
-  ["tpl/internal/proj_common.ml"]
-  "proj-build/internal/proj_common.ml"
-
-(* not used now, since using make + ocamldep-sorter to build server
-let _cmx : string = Ml_make.compile_ml_to_obj
-  ~pkgs:allpkgs
-  ~deps:[]
-  "proj-build/internal/proj_common.ml"
-
-let common_objs = [ "proj-build/internal/proj_common.cmx" ]
-
-let controller_deps = common_objs  (* todo *)
-
-let controller_objs = List.map
-  (fun ml ->
-     Ml_make.compile_ml_to_obj
-       ~deps:controller_deps
-       ~pkgs:allpkgs
-       ~incl:["proj-build/internal"] &
-     "proj-build" // con_path // ml
-  )
-  controllers_mls
-
-let () = Ml_make.compile_mls_to_nat
-  ~pkgs:allpkgs
-  ~incl:["proj-build/internal"; "proj-build" // con_path]
-  ~pre_objs:(common_objs @ controller_objs)
-  [ "config/route.ml"; "main.ml" ]
-  server_path_bin
-*)
+let () = Migration.register_make_rules ()
 
 let () = View.register_make_rules ()
 
 let make_copy_from_tpl fn =
   let src = "tpl" // fn
   and dst = "proj-build" // fn in
-  Make.make1 dst [src] begin fun () ->
-    Filew.copy_file src dst
-  end
+  Ml_make.glue [src] dst
 
 let () =
   List.iter make_copy_from_tpl
-    [ "Makefile"; "internal/main_pre.ml"; "internal/main_post.ml"
-    ]
+    ("Makefile" :: "db/migrate/migrate_types.ml" ::
+       List.map (fun n -> "internal" // n)
+       [ "common/proj_common.ml"; "server/main_pre.ml"; "server/main_post.ml"
+       ; "server/database.ml"; "server/psql.ml"
+       ; "server/command_db_create.ml"; "server/command_db_drop.ml"
+       ; "server/viewHelpers.ml"
+       ; "common/tagged_marshal.ml"
+       ; "common/migrations.ml"; "make_schema/make_schema.ml"
+       ; "common/schema_types.ml"
+       ]
+    )
 
-let () = Ml_make.glue
-  ["tpl/internal/database.ml"]
-  "proj-build/internal/database.ml"
-
-let () = Ml_make.glue
-  ["tpl/internal/psql.ml"]
-  "proj-build/internal/psql.ml"
-
-let () = Ml_make.glue
-  ["tpl/internal/command_db_create.ml"]
-  "proj-build/internal/command_db_create.ml"
-
-let () = Ml_make.glue
-  ["tpl/internal/command_db_drop.ml"]
-  "proj-build/internal/command_db_drop.ml"
-
-let () = make_copy_from_tpl "internal/viewHelpers.ml"
+let () =
+  let src = "tpl/db/migrate/pg_initial_migration.mlt"
+  and dst = "proj/db/migrate/0_initial.mlt" in
+  Make.make1 dst [src] begin fun () ->
+    Filew.copy_file src dst
+  end
 
 (***********)
 
@@ -134,6 +94,7 @@ let codegen_action () =
 
 let make_action () =
   codegen_action ();
+  sys_command_ok "make -C proj-build .depend";
   sys_command_ok "make -C proj-build -j"
 
 let run_server () =
