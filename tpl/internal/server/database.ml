@@ -97,7 +97,8 @@ let with_connection_blocking f =
   let conn = open_connection () in
   let finally () = conn#disconnect () in
   try
-    f conn;
-    finally ()
+    let r = f conn in
+    finally ();
+    r
   with
   | e -> finally (); raise e
