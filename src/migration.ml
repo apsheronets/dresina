@@ -12,10 +12,11 @@ let () = stage
   ~mlt:"tpl/db/migrate/migrate_types.mlt"
   "tpl/db/migrate/migrate_types.ml"
 
-let migrations =
+let (migrations, last_migration_id) =
   let src_path = "proj/db/migrate"
   and dst_path = "proj-build/db/migrate" in
-  let ids = Hashtbl.create 127 in
+  let ids = Hashtbl.create 127
+  and last_migration_id = ref "" in
   src_path |> readdir_list |> List.sort String.compare |>
   (fun lst -> "0_initial.mlt" :: lst) |>
   List.uniq ~eq:String.eq |>
@@ -36,6 +37,11 @@ let migrations =
            then failwith "duplicate migration identifier %S" id
            else Hashtbl.add ids id ()
          in
+         let () =
+           if id > !last_migration_id
+           then last_migration_id := id
+           else ()
+         in
          let src = src_path // n
          and dst = dst_path //
            ("migration_" ^ change_suffix ~place:"migration" n ".mlt" ".ml")
@@ -43,6 +49,8 @@ let migrations =
        else
          None
     )
+  |> fun migrations ->
+  (migrations, !last_migration_id)
 
 let () = List.iter
   (fun (src, dst) ->
@@ -70,17 +78,20 @@ let () =
   let dst = "proj-build/db/migrate/register_all_migrations.ml" in
   Make.make [dst] ~virtdeps:[dep_migs] [] begin fun () ->
     let contents =
-      Cg.Struc.func "register" ["()"] &
-      Cg.Expr.seq &
-      List.map
-        (fun (_src, dst) ->
-           let modname = String.capitalize & Filename.basename &
-             change_suffix ~place:"register_all_migrations" dst ".ml" "" in
-           Cg.Expr.call_gen (Cg.Expr.modqual modname "register")
-             [ "()"
-             ]
-        )
-        migrations
+      Cg.Struc.items &
+        [ Cg.Struc.func "register" ["()"] &
+          Cg.Expr.seq &
+          List.map
+            (fun (_src, dst) ->
+               let modname = String.capitalize & Filename.basename &
+                 change_suffix ~place:"register_all_migrations" dst ".ml" "" in
+               Cg.Expr.call_gen (Cg.Expr.modqual modname "register")
+                 [ "()"
+                 ]
+            )
+            migrations
+        ; Cg.Struc.expr "last_migration_id" & Cg.Lit.string last_migration_id
+        ]
     in
       Filew.spit_bin dst contents
   end
