@@ -82,6 +82,7 @@ let http_root_func path rq =
   end
 
 let server () =
+  Database.check_schema_version ();
   S.mount_http http_root_endpoint http_root_func;
   S.listener_run my_listener
 

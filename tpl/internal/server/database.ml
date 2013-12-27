@@ -1,4 +1,6 @@
 open Proj_common
+open Cd_All
+open Strings.Latin1
 open Dbi
 open Dbi_pg
 
@@ -102,3 +104,42 @@ let with_connection_blocking f =
     r
   with
   | e -> finally (); raise e
+
+let check_schema_version () =
+  with_connection_blocking & fun conn ->
+  let res_ver () =
+    match conn#execute "select max(id) from schema_migrations" with
+    | `Data d ->
+        begin try
+          Some (List.get_single & d#map_to_list Dbi_pg.
+            ( (fun id -> id) <$> istring 0
+            ))
+        with _ -> None
+        end
+    | `Cmd _ -> assert false
+    | `Error _ -> None
+  and init_schema_versions () =
+    List.iter
+      (fun sql -> Dbi_pg.cmd_ok & conn#execute sql)
+      [ "create table schema_migrations (id varchar(100) not null primary key)"
+      ; "insert into schema_migrations (id) values ('0')"
+      ]
+  in
+  let db_ver =
+    match res_ver () with
+    | Some db_ver -> db_ver
+    | None ->
+        init_schema_versions ();
+        begin match res_ver () with
+        | None -> assert false
+        | Some db_ver -> db_ver
+        end
+  in
+  match String.cmp db_ver Register_all_migrations.last_migration_id with
+  | LT -> failwith "Database schema is old, this executable can't work \
+                    with it.  Try to use 'db:migrate' command \
+                    to apply recent migrations."
+  | GT -> failwith "Database schema has changes that are not known to \
+                    this executable.  Try to recompile executable against \
+                    new database schema."
+  | EQ -> ()
