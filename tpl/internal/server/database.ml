@@ -56,25 +56,23 @@ let register ?host ?port ?dbname ?user ?password
     ; schema = schema
     }
 
+let open_connection () =
+  let conn = new connection ((!!conn_pool_info).conn_info ()) in
+  begin match (!!conn_pool_info).schema with
+  | None -> ()
+  | Some s ->
+      let (_ : Dbi_pg.result) = conn#execute (sprintf
+        "set search_path = \"%s\", public"
+        s
+        )
+      in ()
+  end;
+  conn
+
 let pool = lazy begin
   Lwt_pool.create
     (!!conn_pool_info).pool
-    (fun () ->
-       Lwt_preemptive.detach
-         (fun () ->
-            let conn = new connection ((!!conn_pool_info).conn_info ()) in
-            begin match (!!conn_pool_info).schema with
-            | None -> ()
-            | Some s ->
-                let (_ : Dbi_pg.result) = conn#execute (sprintf
-                  "set search_path = \"%s\", public"
-                  s
-                  )
-                in ()
-            end;
-            conn
-         )
-         ()
+    (fun () -> Lwt_preemptive.detach open_connection ()
     )
 end
 
@@ -89,3 +87,17 @@ let with_connection f =
   match res with
   | `Ok r -> IO.return r
   | `Error e -> IO.error e
+
+(* use connection in current thread, blocking other lwt threads;
+   close connection after use.
+   Planned usage: only for pre-server functions like "checking schema
+   version" or 'db:migrate'.
+ *)
+let with_connection_blocking f =
+  let conn = open_connection () in
+  let finally () = conn#disconnect () in
+  try
+    f conn;
+    finally ()
+  with
+  | e -> finally (); raise e
