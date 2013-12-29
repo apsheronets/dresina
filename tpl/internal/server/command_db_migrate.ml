@@ -40,7 +40,8 @@ let do_migration id em : unit =
              Printf.eprintf "Error rolling back action: %s\n%!"
                (string_of_exn exn)
       )
-      done_rev
+      done_rev;
+    exit 1
   in
   let rec loop done_rev em =
     match em with
