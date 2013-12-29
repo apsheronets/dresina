@@ -80,6 +80,7 @@ let () =
        ; "server/command_db_migrate.ml"
        ; "common/generate_sql.ml"
        ; "common/apply_migrations.ml"
+       ; "server/command_db_rollback.ml"
        ]
     )
 

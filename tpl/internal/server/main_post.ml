@@ -111,6 +111,7 @@ let () =
         | _ -> failwith "command db:migrate can have only one argument"
       in
         Command_db_migrate.db_migrate ?up_to ()
+  | "db:rollback" :: _ -> Command_db_rollback.db_rollback ()
   | _ ->
       Printf.eprintf "%s: invalid command line\n%!" Sys.argv.(0);
       usage ()
