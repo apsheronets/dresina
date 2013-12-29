@@ -25,12 +25,14 @@ ocamldep = ocamlfind ocamldep $(all_opts)
 server_objs    = $(server_mls:.ml=.cmo)
 server_optobjs = $(server_mls:.ml=.cmx)
 
-sch_files = $(shell find db/migrate internal/common internal/make_schema \
-                      internal/common \
-                      -name '*.ml')
-sch_ocamlc = $(ocamlc_noopts) $(all_comp_opts)
-sch_objs = $(sch_files:.ml=.cmo)
+sch_dirs = db/migrate internal/common internal/make_schema \
+             internal/common
+sch_files = $(shell find $(sch_dirs) -name '*.ml')
 sch_packages = cadastr,amall.dbi
+sch_ocamlc = $(ocamlc_noopts) $(all_comp_opts) \
+               $(addprefix -I , $(sch_dirs)) \
+               -package $(sch_packages) 
+sch_objs = $(sch_files:.ml=.cmo)
 
 all: $(server_name) db/schema.bin
 
@@ -45,12 +47,11 @@ sch_sorted = $(shell ocamldep-sorter $(sch_objs) < .depend)
 
 make_schema: $(sch_objs)
 	$(sch_ocamlc) \
-	  -package $(sch_packages) \
 	  $(sch_sorted) \
 	  -linkpkg -o $@
 
 db/schema.bin: make_schema
-	./make_schema $@
+	./make_schema
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
@@ -60,6 +61,8 @@ db/schema.bin: make_schema
 	$(ocamlc) -c $<
 .ml.cmx:
 	$(ocamlopt) -c $<
+internal/make_schema/%.cmo : internal/make_schema/%.ml
+	$(sch_ocamlc) -c $< -o $@
 
 clean:
 	-rm -f *.cm[ioxa] *.cmx[as] *.o *.a *~ $(server_name)

@@ -32,6 +32,10 @@ let (migrations, last_migration_id) =
          then failwith "migration %S must begin from some digits that form \
                         its migration identifier" n
          else
+         if String.length id > 100
+         then failwith "migration %S has too long migration id, \
+                        please limit it to 100 digits max" n
+         else
          let () =
            if Hashtbl.mem ids id
            then failwith "duplicate migration identifier %S" id

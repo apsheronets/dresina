@@ -38,11 +38,15 @@ let ml_of_column_def_list lst =
   % sum_constr Md_up
   % sum_constr Md_down
 
-% sum_type migration_language
-  % sum_constr Ml_sql
-  % sum_constr Ml_ocaml
+% alias func_no int
 
-% sum_type migration_item
+% sum_type executable_migration_action
+  % sum_constr Ema_sql
+    % sum_arg string
+  % sum_constr Ema_ocaml
+    % sum_arg func_no
+
+% sum_type migration_item_special
   % sum_constr Create_table
     % sum_arg table_def
   % sum_constr Drop_table
@@ -67,10 +71,6 @@ let ml_of_column_def_list lst =
   % sum_constr Modify_column
     % sum_arg column_ref
     % sum_arg column_modification
-  % sum_constr Generic
-    % sum_arg migration_direction
-    % sum_arg migration_language
-    % sum_arg string
 
   % sum_constr Create_type
     % sum_arg string
@@ -89,6 +89,22 @@ let ml_of_column_def_list lst =
     % sum_arg string
 % flush
 
+type migration_item_generic =
+  (migration_direction * executable_migration_action)
+
+let ml_of_migration_item_generic (d, l) =
+  Tuple.constr
+    [ ml_of_migration_direction d
+    ; ml_of_executable_migration_action l
+    ]
+
+% sum_type migration_item
+  % sum_constr Mi_special
+    % sum_arg migration_item_special
+  % sum_constr Mi_generic
+    % sum_arg migration_item_generic
+% flush
+
 type loc = (string * int)
 
 let ml_of_loc (fname, lineno) = Tuple.constr [Lit.string fname; Lit.int lineno]
@@ -96,3 +112,15 @@ let ml_of_loc (fname, lineno) = Tuple.constr [Lit.string fname; Lit.int lineno]
 % record_type migration_loc
   % field ml_loc loc
   % field ml_item migration_item
+
+% sum_type executable_migration_item
+  % sum_constr Emi_up_down
+    % sum_arg executable_migration_action
+    % sum_arg executable_migration_action
+  % sum_constr Emi_up
+    % sum_arg executable_migration_action
+  % sum_constr Emi_down
+    % sum_arg executable_migration_action
+% flush
+
+type executable_migration = executable_migration_item list

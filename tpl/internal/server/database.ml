@@ -105,7 +105,7 @@ let with_connection_blocking f =
   with
   | e -> finally (); raise e
 
-let check_schema_version () =
+let get_schema_version () =
   with_connection_blocking & fun conn ->
   let res_ver () =
     match conn#execute "select max(id) from schema_migrations" with
@@ -125,16 +125,18 @@ let check_schema_version () =
       ; "insert into schema_migrations (id) values ('0')"
       ]
   in
-  let db_ver =
     match res_ver () with
     | Some db_ver -> db_ver
     | None ->
         init_schema_versions ();
         begin match res_ver () with
-        | None -> assert false
+        | None -> failwith "can't get current database schema version, or \
+                            error creating 'schema_migrations' table"
         | Some db_ver -> db_ver
         end
-  in
+
+let check_schema_version () =
+  let db_ver = get_schema_version () in
   match String.cmp db_ver Register_all_migrations.last_migration_id with
   | LT -> failwith "Database schema is old, this executable can't work \
                     with it.  Try to use 'db:migrate' command \

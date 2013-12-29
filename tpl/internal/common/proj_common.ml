@@ -110,3 +110,18 @@ let buffer_add_html buf s =
   done
 
 let empty_env = object end
+
+
+exception Htfa
+
+let hashtbl_for_all pred h =
+  try
+    Hashtbl.iter
+      (fun k v ->
+         if pred k v
+         then ()
+         else raise Htfa
+      )
+      h;
+    true
+  with Htfa -> false

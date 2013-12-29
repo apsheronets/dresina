@@ -92,6 +92,9 @@ usage:\n\
 \  -h | --help | help  --  this message\n\
 \  without arguments or with \"server\" command  --  run web server\n\
 \  db:create  --  create database based on this project's database configuration\n\
+\  db:drop  --  drop project's database (you'll lose schema and data both)\n\
+\  db:migrate [up_to_id]  --  apply migrations to database (all pending, or\n\
+\                             only up to 'up_to_id' inclusive)\n\
 "
 
 let () =
@@ -100,6 +103,14 @@ let () =
   | ("--help" | "-h" | "help") :: _ -> usage ()
   | "db:create" :: _ -> Command_db_create.db_create ()
   | "db:drop" :: _ -> Command_db_drop.db_drop ()
+  | "db:migrate" :: args ->
+      let up_to =
+        match args with
+        | [] -> None
+        | id :: [] -> Some id
+        | _ -> failwith "command db:migrate can have only one argument"
+      in
+        Command_db_migrate.db_migrate ?up_to ()
   | _ ->
       Printf.eprintf "%s: invalid command line\n%!" Sys.argv.(0);
       usage ()

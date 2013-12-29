@@ -54,7 +54,6 @@ let do_generate ty =
                    let match_pattern =
                      match List.length types with
                      | 0 -> ""
-                     | 1 -> " x"
                      | n ->
                          Printf.sprintf " (%s)" begin
                            let rec mkvars i =
@@ -71,7 +70,6 @@ let do_generate ty =
                      in
                      match types with
                      | [] -> ""
-                     | [t] -> " ^ " ^ ml_of_ty t "x"
                      | _ -> " ^ \"(\" ^ " ^
                          begin
                            let rec mkvals i types =

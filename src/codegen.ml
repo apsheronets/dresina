@@ -313,11 +313,15 @@ module Struc
       sprintf "let %s%s =\n%s\n"
         name opt_ty body
 
-    let func name args body =
+    let func ?ret_ty name args body =
       check_lid ~place:"Codegen.Struc.func" name;
-      sprintf "let %s %s =\n%s\n"
+      sprintf "let %s %s%s =\n%s\n"
         name
         (String.concat " " args)
+        (match ret_ty with
+         | None -> ""
+         | Some t -> " : " ^ t
+        )
         (indent 2 body)
 
     let items body_items =
@@ -373,3 +377,16 @@ let dummy_line_directive = line_directive "_none_" 0
 
 let codegen_error fname lineno msg =
   eprintf "File %S, line %i:\n%s\n%!" fname lineno msg
+
+(* strips directive from beginning of [txt], if it's present *)
+let strip_line_directive txt =
+  if String.length txt = 0
+  then txt
+  else
+    if txt.[0] = '#'
+    then
+      let (_line_dir, _newline, rest) =
+        String.split_by_first ( ( = ) '\n' ) txt
+      in
+        rest
+    else txt

@@ -9,7 +9,15 @@ type context =
   { mutable creating_table :
      (string * column_def Queue.t * (string * int)) option
   ; migration : migration_loc Queue.t
+  ; ocaml_functions : (int * string) Queue.t
+  ; mutable ocaml_funcno : int
   }
+
+let register_ocaml_migration body ctx =
+  let n = ctx.ocaml_funcno in
+  ctx.ocaml_funcno <- n + 1;
+  Queue.push (n, body) ctx.ocaml_functions;
+  n
 
 let finish_table_if_any ctx =
   match ctx.creating_table with
@@ -17,10 +25,16 @@ let finish_table_if_any ctx =
   | Some (tname, cols_q, loc) ->
       Queue.push
         { ml_item =
-           Create_table
+           Mi_special (Create_table
              { td_name = tname
-             ; td_columns = list_of_queue cols_q
-             }
+             ; td_columns =
+                 let id_col =
+                   { cd_name = "id"; cd_type = "id"; cd_nullable = false
+                   ; cd_kind = Ck_pk
+                   }
+                 in
+                 id_col :: list_of_queue cols_q
+             })
         ; ml_loc = loc
         }
         ctx.migration;
@@ -65,10 +79,12 @@ let common v = fun ctx ->
   finish_table_if_any ctx;
   Queue.push { ml_item = v ; ml_loc = directive_loc () } ctx.migration
 
-let add_column4 tname cname ctype cnullable = common &
+let common_spec v = common (Mi_special v)
+
+let add_column4 tname cname ctype cnullable = common_spec &
   Add_column (tname, (column_def ~cname ~ctype ~cnullable ~ckind:Ck_attr))
 
-let add_reference4 tname refcolumn reftable cnullable = common &
+let add_reference4 tname refcolumn reftable cnullable = common_spec &
   Add_column
     ( tname
     , (column_def ~cname:refcolumn ~ctype:"id" ~cnullable
@@ -84,25 +100,25 @@ let column_ref ~tname ~cname ~ckind =
   ; cr_kind = ckind
   }
 
-let drop_column2 tname cname = common &
+let drop_column2 tname cname = common_spec &
   Drop_column (column_ref ~tname ~cname ~ckind:Ck_attr)
 
-let drop_reference3 tname refcolumn reftable = common &
+let drop_reference3 tname refcolumn reftable = common_spec &
   Drop_column (column_ref ~tname ~cname:refcolumn ~ckind:(Ck_fk reftable))
 
 let drop_reference2 tname reftable ctx =
   drop_reference3 tname (reftable ^ "_id") reftable ctx
 
-let create_index2 tname index_expr = common &
+let create_index2 tname index_expr = common_spec &
   Create_index (tname, index_expr)
 
-let drop_index2 tname index_expr = common &
+let drop_index2 tname index_expr = common_spec &
   Drop_index (tname, index_expr)
 
-let rename_table2 toldname tnewname = common &
+let rename_table2 toldname tnewname = common_spec &
   Rename_table (toldname, tnewname)
 
-let modify_column3 tname cname modif = common &
+let modify_column3 tname cname modif = common_spec &
   let cm =
     match modif with
     | "null" -> Cm_set_nullable true
@@ -111,7 +127,7 @@ let modify_column3 tname cname modif = common &
   in
     Modify_column ((column_ref ~tname ~cname ~ckind:Ck_attr), cm)
 
-let modify_reference4 tname refcolumn reftable modif = common &
+let modify_reference4 tname refcolumn reftable modif = common_spec &
   let cm =
     match modif with
     | "null" -> Cm_set_nullable true
@@ -127,44 +143,48 @@ let modify_reference4 tname refcolumn reftable modif = common &
 let modify_reference3 tname reftable modif ctx =
   modify_reference4 tname (reftable ^ "_id") reftable modif ctx
 
-let rename_column3 tname cname cnewname = common &
+let rename_column3 tname cname cnewname = common_spec &
   Rename_column ((column_ref ~tname ~cname ~ckind:Ck_attr), cnewname)
 
-let rename_reference4 tname refcolumn reftable cnewname = common &
+let rename_reference4 tname refcolumn reftable cnewname = common_spec &
   Rename_column
     ((column_ref ~tname ~cname:refcolumn ~ckind:(Ck_fk reftable)), cnewname)
 
 let rename_reference3 tname reftable newcolumn ctx =
   rename_reference4 tname (reftable ^ "_id") reftable newcolumn ctx
 
-let up_sql0b body = common &
-  Generic (Md_up, Ml_sql, body)
+let mig_sql dir body ctx = (common &
+  Mi_generic (dir, Ema_sql (strip_line_directive body))
+  ) ctx
 
-let down_sql0b body = common &
-  Generic (Md_down, Ml_sql, body)
+let up_sql0b = mig_sql Md_up
 
-let up_ocaml0b body = common &
-  Generic (Md_up, Ml_ocaml, body)
+let down_sql0b = mig_sql Md_down
 
-let down_ocaml0b body = common &
-  Generic (Md_down, Ml_ocaml, body)
+let up_ocaml0b body ctx = common (
+  let funcno = register_ocaml_migration body ctx in
+  Mi_generic (Md_up, Ema_ocaml funcno)) ctx
 
-let drop_table1 tname = common &
+let down_ocaml0b body ctx = common (
+  let funcno = register_ocaml_migration body ctx in
+  Mi_generic (Md_down, Ema_ocaml funcno)) ctx
+
+let drop_table1 tname = common_spec &
   Drop_table tname
 
 (************************************************)
 
-let create_type2 ty_name ml_type = common &
+let create_type2 ty_name ml_type = common_spec &
   Create_type (ty_name, ml_type)
 
-let pg_of_string1b ty b = common &
+let pg_of_string1b ty b = common_spec &
   Pg_of_string (ty, b)
 
-let pg_to_string1b ty b = common &
+let pg_to_string1b ty b = common_spec &
   Pg_to_string (ty, b)
 
-let pg_ddl2 ty ddl = common &
+let pg_ddl2 ty ddl = common_spec &
   Pg_ddl (ty, ddl)
 
-let inherit_type2 ty_child ty_base = common &
+let inherit_type2 ty_child ty_base = common_spec &
   Inherit_type (ty_child, ty_base)

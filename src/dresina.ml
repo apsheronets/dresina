@@ -77,6 +77,9 @@ let () =
        ; "common/tagged_marshal.ml"
        ; "common/migrations.ml"; "make_schema/make_schema.ml"
        ; "common/schema_types.ml"
+       ; "server/command_db_migrate.ml"
+       ; "common/generate_sql.ml"
+       ; "common/apply_migrations.ml"
        ]
     )
 

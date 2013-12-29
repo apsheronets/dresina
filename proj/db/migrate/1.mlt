@@ -23,19 +23,19 @@
 % drop_index test int_attr,str_attr
 
 % begin up_sql
-    select up_sql_no
+    update schema_migrations set id = id where false
 % end
 
 % begin down_sql
-    select down_sql_no
+    update schema_migrations set id = id where false
 % end
 
 % begin up_ocaml
-    ignore conn'''up
+    ignore conn
 % end
 
 % begin down_ocaml
-    ignore conn'''down
+    ignore conn
 % end
 
 % drop_table test
