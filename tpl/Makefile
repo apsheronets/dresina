@@ -50,7 +50,7 @@ make_schema: $(sch_objs)
 	  $(sch_sorted) \
 	  -linkpkg -o $@
 
-db/schema.bin: make_schema
+db/schema.bin db/schema_code.ml: make_schema
 	./make_schema
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx

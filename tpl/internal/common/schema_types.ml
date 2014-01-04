@@ -24,7 +24,7 @@ type column_def_checked =
   ; cdc_type : string
   ; cdc_nullable : bool
   ; cdc_kind : column_kind_checked
-  ; cdc_ddl : string
+  ; cdc_type_mod : column_type_modifier
   }
 
 type index_db_ident = string

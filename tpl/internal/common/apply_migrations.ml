@@ -49,8 +49,6 @@ let get_type_attr agetter ty =
   | None -> failwith "get_type_attr"
   | Some v -> v
 
-let get_type_ddl ty = get_type_attr (fun ty -> ty.ty_pg_ddl) ty
-
 let check_type_desc_completeness ty =
   let error_attrs = ref [] in
   let error aname = error_attrs := aname :: !error_attrs in
@@ -107,9 +105,38 @@ let state_add s dir ema =
           ; em_rev = Emi_up_down (up, ema) :: s.em_rev
           }
 
-module Gs = Generate_sql
+let db_ident_max_len = 32
+
+let form_db_ident_of_string s =
+  String.concat "_" &
+  String.split
+    (function 'a'..'z' | 'A'..'Z' | '0'..'9' -> false | _ -> true)
+    s
+
+let make_unique_name base suffix is_unique =
+  let base = form_db_ident_of_string base in
+  let rec get_ident base opt_i =
+    let r = base
+      ^ (match opt_i with None -> "" | Some i -> string_of_int i)
+      ^ suffix in
+    if String.length r > db_ident_max_len
+    then get_ident (String.sub base 0 (String.length base - 1)) opt_i
+    else r
+  in
+    let no_counter = get_ident base None in
+    if is_unique no_counter
+    then no_counter
+    else
+      let rec loop i =
+        let ident = get_ident base (Some i) in
+        if is_unique ident
+        then ident
+        else loop (i + 1)
+      in
+        loop 2
 
 let apply_migration
+gs
 { s_types = types ; s_tables = tables }
 mig_id
 state
@@ -167,36 +194,36 @@ state
     try Hashtbl.find types tname
     with Not_found -> no_type tname
   in
-  let check_col_type name ty =
-    if not (Hashtbl.mem types ty)
-    then error "column %S has unknown type %S" name ty
-    else ()
+  let check_col_type ~cname ~tyname =
+    if not (Hashtbl.mem types tyname)
+    then error "column %S has unknown type %S" cname tyname
+    else
+      let ty = Hashtbl.find types tyname in
+      match check_type_desc_completeness ty with
+      | None -> ()
+      | Some err_msg -> error
+          "column %S: definition of type %S is not complete: %s"
+          cname tyname err_msg
   in
   let check_cdc
     ( { cdc_name = cdc_name
       ; cdc_nullable = cdc_nullable
       ; cdc_type = cdc_type
       ; cdc_kind = cdc_kind
-      ; cdc_ddl = _
+      ; cdc_type_mod = _
       } as cdc
     )
      =
-      if not (Hashtbl.mem types cdc_type)
-      then error "column %S has unknown type %S" cdc_name cdc_type
-      else if cdc_name = "id"
+      check_col_type ~cname:cdc_name ~tyname:cdc_type;
+      if cdc_name = "id"
         && (cdc_nullable || cdc_type <> "id" || cdc_kind <> Ckc_pk)
       then error "primary key (\"id\" column) must have type \"id\" \
                   and must be not-nullable"
-      else
-      let ty = Hashtbl.find types cdc_type in
-      match check_type_desc_completeness ty with
-      | None -> cdc
-      | Some err_msg ->
-          error "definition of type %S is not complete: %s" cdc_type err_msg
+      else cdc
   in
   let make_fk_name ~tname ~col_name =
     let base = tname ^ "_" ^ col_name in
-    Gs.make_unique_name base "_fk" & fun ident ->
+    make_unique_name base "_fk" & fun ident ->
       hashtbl_for_all
         (fun _tname tab ->
            not (List.exists
@@ -213,11 +240,10 @@ state
   let check_added_col_def
     tname
     { cd_name = cd_name ; cd_type = cd_type ; cd_nullable = cd_nullable
-    ; cd_kind = cd_kind
+    ; cd_kind = cd_kind; cd_type_mod = cd_type_mod
     }
     =
-      check_col_type cd_name cd_type;
-      let ty = get_type cd_type in
+      check_col_type ~cname:cd_name ~tyname:cd_type;
       let cdc_kind =
         match cd_kind with
         | Ck_pk -> Ckc_pk
@@ -226,12 +252,13 @@ state
             let fk_db_name = make_fk_name ~tname ~col_name:cd_name in
             Ckc_fk (fk_db_name, reftable)
       in
+      (* let () = Printf.eprintf "cd_type = %s\n%!" cd_type in *)
       check_cdc
       { cdc_name = cd_name
       ; cdc_nullable = cd_nullable
       ; cdc_type = cd_type
       ; cdc_kind = cdc_kind
-      ; cdc_ddl = get_type_ddl ty
+      ; cdc_type_mod = cd_type_mod
       }
   and check_cols_uniq cdc_list =
     cdc_list |> List.map (fun d -> (d.cdc_name, d)) |>
@@ -258,7 +285,7 @@ state
       else ()
   and make_index_name ~tname ~index_expr =
     let base = tname ^ "_" ^ index_expr in
-    Gs.make_unique_name base "_i" & fun ident ->
+    make_unique_name base "_i" & fun ident ->
       hashtbl_for_all
         (fun _tname tab ->
            not (List.exists
@@ -290,15 +317,15 @@ state
         cols;
       check_cols_uniq tab.tab_cols;
       state_add_sql state
-        (Gs.create_table tname tab.tab_cols)
-        (Gs.drop_table tname)
+        (gs#create_table ~indexes:[] tname tab.tab_cols)
+        (gs#drop_table tname)
   | Drop_table tname ->
       let { tab_name = tname ; tab_cols = cols ; tab_indexes = indexes } =
         get_table tname in
       Hashtbl.remove tables tname;
       state_add_sql state
-        (Gs.drop_table tname)
-        (Gs.create_table tname cols ~indexes)
+        (gs#drop_table tname)
+        (gs#create_table ~indexes tname cols)
   | Add_column (tname, column_def) ->
       let tab = get_table tname in
       let col = check_added_col_def tname column_def in
@@ -306,8 +333,8 @@ state
       check_cols_uniq cols;
       tab.tab_cols <- cols;
       state_add_sql state
-        (Gs.add_column tname col)
-        (Gs.drop_column tname col.cdc_name)
+        (gs#add_column tname col)
+        (gs#drop_column tname col.cdc_name)
   | Drop_column
     ({ cr_table = tname; cr_column = cname; cr_kind = ckind } as cr) ->
       check_column_ref_exists cr;
@@ -319,8 +346,8 @@ state
       let dropped_col = List.get_single dropped_cols in
       tab.tab_cols <- cols;
       state_add_sql state
-        (Gs.drop_column tname cname)
-        (Gs.add_column tname dropped_col)
+        (gs#drop_column tname cname)
+        (gs#add_column tname dropped_col)
   | Create_index (tname, index_expr) ->
       let tab = get_table tname in
       let indexes = tab.tab_indexes in
@@ -330,8 +357,8 @@ state
       let iname = make_index_name ~tname ~index_expr in
       tab.tab_indexes <- (iname, index_expr) :: indexes;
       state_add_sql state
-        (Gs.create_index ~tname ~index_expr ~iname)
-        (Gs.drop_index ~iname)
+        (gs#create_index ~tname ~index_expr ~iname)
+        (gs#drop_index ~iname)
   | Drop_index (tname, index_expr) ->
       let tab = get_table tname in
       let indexes = tab.tab_indexes in
@@ -342,8 +369,8 @@ state
         let (iname, _ie) = List.get_single dropped_indexes in
         tab.tab_indexes <- indexes;
         state_add_sql state
-          (Gs.drop_index ~iname)
-          (Gs.create_index ~tname ~index_expr ~iname)
+          (gs#drop_index ~iname)
+          (gs#create_index ~tname ~index_expr ~iname)
       else error "table %S: index on %S doesn't exist" tname index_expr
   | Rename_table (toldname, tnewname) ->
       let tab = get_table toldname in
@@ -355,8 +382,8 @@ state
       let tab = { tab with tab_name = tnewname } in
       Hashtbl.add tables tnewname tab;
       state_add_sql state
-        (Gs.rename_table ~toldname ~tnewname)
-        (Gs.rename_table ~toldname:tnewname ~tnewname:toldname)
+        (gs#rename_table ~toldname ~tnewname)
+        (gs#rename_table ~toldname:tnewname ~tnewname:toldname)
   | Rename_column
       ( ({ cr_table = tname ; cr_column = oldcname ; cr_kind = ckind }
           as old_column_ref)
@@ -380,8 +407,8 @@ state
       check_cols_uniq cols;
       tab.tab_cols <- cols;
       state_add_sql state
-        (Gs.rename_column ~tname ~oldcname ~newcname)
-        (Gs.rename_column ~tname ~oldcname:newcname ~newcname:oldcname)
+        (gs#rename_column ~tname ~oldcname ~newcname)
+        (gs#rename_column ~tname ~oldcname:newcname ~newcname:oldcname)
   | Modify_column
       ( ({ cr_table = tname ; cr_column = cname ; cr_kind = ckind }
            as column_ref
@@ -407,29 +434,30 @@ state
                      tname cname cdc.cdc_nullable
                    else
                    new_state := Some (state_add_sql state
-                     ( Gs.modify_column_nullable ~tname ~cname
+                     ( gs#modify_column_nullable ~tname ~cname
                          ~nullable:new_nullable)
-                     ( Gs.modify_column_nullable ~tname ~cname
+                     ( gs#modify_column_nullable ~tname ~cname
                          ~nullable:(not new_nullable))
                      );
                    { cdc with cdc_nullable = new_nullable }
-               | Cm_set_type new_type ->
-                   if cdc.cdc_type = new_type
-                   then error "table %S: column %S already has type=%S"
-                     tname cname cdc.cdc_type
+               | Cm_set_type (new_type, new_type_mod) ->
+                   if cdc.cdc_type = new_type &&
+                      cdc.cdc_type_mod = new_type_mod
+                   then error "table %S: column %S already has this type"
+                     tname cname
                    else
                      match ckind with
                      | Ck_pk -> assert false
                      | Ck_attr ->
-                         let ty = get_type new_type in
-                         let new_ddl = get_type_ddl ty in
+                         check_col_type ~cname ~tyname:new_type;
                          new_state := Some (state_add_sql state
-                           ( Gs.modify_column_type ~tname ~cname
-                               ~new_ddl)
-                           ( Gs.modify_column_type ~tname ~cname
-                               ~new_ddl:cdc.cdc_ddl)
+                           ( gs#modify_column_type ~tname ~cname
+                               ~new_type ~new_type_mod)
+                           ( gs#modify_column_type ~tname ~cname
+                               ~new_type:cdc.cdc_type
+                               ~new_type_mod:cdc.cdc_type_mod)
                            );
-                         { cdc with cdc_type = new_type ; cdc_ddl = new_ddl }
+                         { cdc with cdc_type = new_type }
                      | Ck_fk _ -> error
                          "table %S: can't modify type of reference %S"
                          tname cname
@@ -473,9 +501,9 @@ state
       end;
       state
 
-let apply_mig_list schema id mig_list =
+let apply_mig_list gs schema id mig_list =
   let in_state = { em_rev = [] ; prev_up = None } in
   List.rev
   (finish_state &
-     List.fold_left (apply_migration schema id) in_state mig_list
+     List.fold_left (apply_migration gs schema id) in_state mig_list
   ).em_rev

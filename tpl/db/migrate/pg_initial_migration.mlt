@@ -1,6 +1,7 @@
 % create_type boolean bool
 
 % begin pg_of_string boolean
+    fun _ctm ->
     function
     | "t" -> true
     | "f" -> false
@@ -8,6 +9,7 @@
 % end
 
 % begin pg_to_string boolean
+    fun _ctm ->
     function
     | true -> "t"
     | false -> "f"
@@ -19,11 +21,11 @@
 % create_type string string
 
 % begin pg_of_string string
-    fun s -> s
+    fun _ctm s -> s
 % end
 
 % begin pg_to_string string
-    fun s -> s
+    fun _ctm s -> s
 % end
 
 % pg_ddl string "varchar(255)"
@@ -37,13 +39,13 @@
 % create_type bigint int64
 
 % begin pg_of_string bigint
-    fun s ->
+    fun _ctm s ->
       try Int64.of_string s
       with Failure _ -> raise (Db_of_string ("bigint", s))
 % end
 
 % begin pg_to_string bigint
-    Int64.to_string
+    fun _ctm -> Int64.to_string
 % end
 
 % pg_ddl bigint bigint
@@ -55,14 +57,37 @@
 % create_type integer int
 
 % begin pg_of_string integer
-    fun s ->
+    fun _ctm s ->
       try int_of_string s
       with Failure _ -> raise (Db_of_string ("int", s))
 % end
 
 % begin pg_to_string integer
-    string_of_int
+    fun _ctm -> string_of_int
 % end
 
 % pg_ddl integer integer
 
+
+% create_type decimal float
+
+% begin pg_of_string decimal
+    fun _ctm s ->
+      try float_of_string s
+      with Failure _ -> raise (Db_of_string ("decimal", s))
+% end
+
+% begin pg_to_string decimal
+    function
+    | Ctm_decimal (_precision, scale) -> fun n ->
+        (* todo: check whether argument fits precision *)
+        Printf.sprintf "%.*f" scale n
+    | Ctm_none -> assert false
+% end
+
+% begin pg_ddl decimal
+    function
+    | Ctm_decimal (precision, scale) ->
+        Printf.sprintf "numeric(%i,%i)" precision scale
+    | Ctm_none -> assert false
+% end

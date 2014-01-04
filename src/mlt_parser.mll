@@ -5,15 +5,30 @@ module Cg = Codegen
 let ml_code txt = Cg.Sum.constr "Ml" [ Cg.Lit.string txt ]
 
 (* returns code that will be placed inside Dir constructor *)
-let code_of_directive dirtype dir args_code =
-  let args_count = List.length args_code in
+let code_of_directive dirtype dir args =
+  let pos_args_count = List.length (List.filter
+      (function
+       | `Pos _ -> true
+       | `Body _ | `Lab (_, _) -> false
+      )
+      args
+    )
+  in
   let func_name =
     match dirtype with
-    | `Strings -> Printf.sprintf "%s%i" dir args_count
-    | `With_body -> Printf.sprintf "%s%ib" dir (args_count - 1)
+    | `Strings -> Printf.sprintf "%s%i" dir pos_args_count
+    | `With_body -> Printf.sprintf "%s%ib" dir pos_args_count
   in
-  if args_count > 0
-  then Cg.Expr.call func_name args_code
+  if args <> []
+  then
+    let args_code = List.map
+      (function
+       | `Pos code | `Body code -> code
+       | `Lab (label, code) -> "~" ^ label ^ ":" ^ code
+      )
+      args
+    in
+    Cg.Expr.call func_name args_code
   else Cg.Expr.lid func_name
 
 let dir_code fname lineno code =
@@ -34,7 +49,8 @@ let eol = '\r'? '\n'
 let eol_char = [ '\n' '\r' ]
 let dir = space* '%' space*
 let dir_comment = space* '#' space*
-let linechar = [ '\000' - '\255' ] # eol_char
+let anychar = [ '\000' - '\255' ]
+let linechar = anychar # eol_char
 let linechar_no_quote = linechar # [ '"' ]
 let not_directive_beginning =
   (
@@ -48,7 +64,7 @@ let not_directive_beginning =
 let ident_re = [ 'a' - 'z' ] [ 'a' - 'z' 'A' - 'Z' '0' - '9' '_' ]*
 let unquoted_string_char =
   [ '\033' - '\126' ] # [ '\'' '"' '[' ']' '{' '}' '(' ')' ]
-let unquoted_string_re = unquoted_string_char+
+let unquoted_string_char_no_tilde = unquoted_string_char # [ '~' ]
 
 rule file rev_acc fname lineno = parse
   eof
@@ -110,7 +126,11 @@ and directive fname lineno = parse
       let lineno = body_end lineno lexbuf in
       ( lineno
       , dir_code fname begin_dir_lineno
-          (code_of_directive `With_body dir_name (dir_args @ [body_ml]))
+          (code_of_directive
+             `With_body
+             dir_name
+             (dir_args @ [`Body body_ml])
+          )
       )
     }
 
@@ -154,24 +174,58 @@ and ident = parse
     }
 
 
-(* возвращает код, представляющий аргумент *)
 and dir_args rev_acc fname lineno = parse
-  (* в начале буфера пробелов нет.  тут должны скушать eol обязательно. *)
+  (* в начале буфера пробелов нет. *)
+
+| ""
+    {
+      match dir_arg fname lineno lexbuf with
+      | `Eoa -> (lineno + 1), List.rev rev_acc
+      | (`Pos _ | `Lab (_, _)) as a ->
+          dir_args (a :: rev_acc) fname lineno lexbuf
+    }
+
+(* возвращает:
+   `Pos код - позициональный аргумент,
+   `Lab (label, код) - опциональный аргумент "~label:строка",
+   `Eoa - конец аргументов
+ *)
+and dir_arg fname lineno = parse
+
+  '~'
+    {
+      let label = ident lexbuf in
+      let () = labelled_colon lexbuf in
+      match dir_arg_no_label fname lineno lexbuf with
+      | None -> failwith "labelled argument must have some value"
+      | Some ml_code -> `Lab (label, ml_code)
+    }
+
+| ""
+    {
+      match dir_arg_no_label fname lineno lexbuf with
+      | None -> `Eoa
+      | Some ml_code -> `Pos ml_code
+    }
+
+
+and dir_arg_no_label fname lineno = parse
+  (* должен съесть все пробелы после себя *)
 
   eol | eof
     {
-      (lineno + 1), List.rev rev_acc
+      None
     }
 
-| (unquoted_string_re as str) space*
+| ((unquoted_string_char_no_tilde unquoted_string_char*) as str) space*
     {
-      dir_args (Cg.Lit.string str :: rev_acc) fname lineno lexbuf
+      Some (Cg.Lit.string str)
     }
 
 | '"'
     {
       let str = quoted_string fname lineno lexbuf in
-      dir_args (Cg.Lit.string str :: rev_acc) fname lineno lexbuf
+      Some (Cg.Lit.string str)
     }
 
 | space
@@ -181,10 +235,29 @@ and dir_args rev_acc fname lineno = parse
 
 | ""
     {
+      let ch = peek_char lexbuf in
       failwith (Printf.sprintf
-        "file %S, line %i: error parsing directive arguments"
-        fname lineno
+        "file %S, line %i: error parsing directive arguments on character %S"
+        fname lineno ch
       )
+    }
+
+and peek_char = parse
+  anychar as c
+    { String.make 1 c }
+| ""
+    { "<eof>" }
+
+and labelled_colon = parse
+
+  ':' space*
+    {
+      ()
+    }
+
+| ""
+    {
+      failwith "expected ':' after '~label'"
     }
 
 (* must eat closing quote and spaces after it.

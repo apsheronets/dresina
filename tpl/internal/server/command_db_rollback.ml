@@ -60,7 +60,7 @@ let do_rollback id em =
 
 let try_rollback ~rollback_id id mig_list =
   let (em : Migrate_types.executable_migration) =
-    apply_mig_list schema id mig_list in
+    apply_mig_list Generate_sql.methods schema id mig_list in
   if id <> rollback_id
   then ()
   else begin

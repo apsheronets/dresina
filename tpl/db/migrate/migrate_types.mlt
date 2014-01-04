@@ -1,8 +1,25 @@
+% sum_type column_type_modifier
+  % sum_constr Ctm_none
+  % sum_constr Ctm_decimal
+    % sum_arg int
+    % sum_arg int
+  (* add later: Ctm_varchar of max_len *)
+% flush
+
+(*
+type ctm_option = column_type_modifier option
+
+let ml_of_ctm_option = function
+| None -> Sum.constr "None" []
+| Some ctm -> Sum.constr "Some" [ml_of_column_type_modifier ctm]
+*)
+
 % sum_type column_modification
   % sum_constr Cm_set_nullable
     % sum_arg bool
   % sum_constr Cm_set_type
     % sum_arg string
+    % sum_arg column_type_modifier
 
 % sum_type column_kind
   % sum_constr Ck_pk
@@ -15,6 +32,7 @@
   % field cd_type string
   % field cd_nullable bool
   % field cd_kind column_kind
+  % field cd_type_mod column_type_modifier
 
 % alias index_expr string
 

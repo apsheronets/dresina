@@ -1,6 +1,7 @@
 % create_table test
   % column int_attr integer notnull
   % column str_attr string null
+  % column dec_attr decimal null ~precision:10 ~scale:2
   % reference test null
   % reference other_test_id test null
 

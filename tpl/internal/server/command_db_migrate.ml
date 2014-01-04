@@ -96,7 +96,7 @@ let schema = Schema_types.create_empty_schema ()
 
 let do_migration_if_needed ~db_ver ~up_to id mig_list =
   let (em : Migrate_types.executable_migration) =
-    apply_mig_list schema id mig_list in
+    apply_mig_list Generate_sql.methods schema id mig_list in
   if id <= db_ver
   then ()  (* is already applied, skipping *)
   else

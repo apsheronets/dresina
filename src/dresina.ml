@@ -78,7 +78,7 @@ let () =
        ; "common/migrations.ml"; "make_schema/make_schema.ml"
        ; "common/schema_types.ml"
        ; "server/command_db_migrate.ml"
-       ; "common/generate_sql.ml"
+       ; "server/generate_sql.ml"
        ; "common/apply_migrations.ml"
        ; "server/command_db_rollback.ml"
        ]
@@ -98,8 +98,9 @@ let codegen_action () =
 
 let make_action () =
   codegen_action ();
-  sys_command_ok "make -C proj-build .depend";
-  sys_command_ok "make -C proj-build -j"
+  sys_command_ok "make -C proj-build .depend db/schema_code.ml -j1";
+  print_endline "-----------";
+  sys_command_ok "make -C proj-build .depend all -j1"
 
 let run_server () =
   make_action ();

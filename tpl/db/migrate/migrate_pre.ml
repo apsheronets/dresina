@@ -30,7 +30,7 @@ let finish_table_if_any ctx =
              ; td_columns =
                  let id_col =
                    { cd_name = "id"; cd_type = "id"; cd_nullable = false
-                   ; cd_kind = Ck_pk
+                   ; cd_kind = Ck_pk; cd_type_mod = Ctm_none
                    }
                  in
                  id_col :: list_of_queue cols_q
@@ -49,25 +49,54 @@ let bool_of_nullable = function
   | "notnull" -> false
   | x -> failwith "Expected \"null\" or \"notnull\", found %S" x
 
-let column_def ~cname ~ctype ~cnullable ~ckind =
+let column_def ~cname ~ctype ~cnullable ~ckind ~ctm =
   { cd_name = cname
   ; cd_type = ctype
   ; cd_nullable = bool_of_nullable cnullable
   ; cd_kind = ckind
+  ; cd_type_mod = ctm
   }
 
 let in_table f ctx =
   match ctx.creating_table with
-  | None -> failwith "no table creation is active"
+  | None -> failwith "No table creation is active"
   | Some (tname, cols_q, loc) -> f tname cols_q loc
 
-let column3 cname ctype cnullable = in_table & fun _tname cols_q _loc ->
-  Queue.push (column_def ~cname ~ctype ~cnullable ~ckind:Ck_attr) cols_q
+let get_ctm ?precision ?scale ctype =
+  match ctype with
+  | "decimal" ->
+      begin match precision, scale with
+      | Some p, Some s ->
+          let (p, s) =
+            try (int_of_string p, int_of_string s)
+            with Failure _ -> failwith
+              "Arguments ~precision and ~scale must be integers"
+          in
+          if p <= 0 then failwith "Argument ~precision must be greater than 0"
+          else if s < 0 then failwith
+            "Argument ~scale must be greater or equal to 0"
+          else Ctm_decimal (p, s)
+      | None, _ | _, None -> failwith
+         "Decimal columns must have ~precision and ~scale defined"
+      end
+  | _ ->
+      begin match precision, scale with
+      | None, None -> Ctm_none
+      | Some _, _ | _, Some _ -> failwith
+         "Type modifiers ~precision and ~scale are applicable to \
+          \"decimal\" columns only"
+      end
+
+let column3 cname ctype cnullable ?precision ?scale =
+  in_table & fun _tname cols_q _loc ->
+    let ctm = get_ctm ?precision ?scale ctype in
+    Queue.push (column_def ~cname ~ctype ~cnullable ~ckind:Ck_attr ~ctm) cols_q
 
 let reference3 cname tname cnullable = in_table & fun _tname cols_q _loc ->
   Queue.push
     (column_def ~cname ~ctype:"id" ~cnullable
-       ~ckind:(Ck_fk tname))
+       ~ckind:(Ck_fk tname) ~ctm:Ctm_none
+    )
     cols_q
 
 let reference2 tname cnullable ctx =
@@ -81,14 +110,17 @@ let common v = fun ctx ->
 
 let common_spec v = common (Mi_special v)
 
-let add_column4 tname cname ctype cnullable = common_spec &
-  Add_column (tname, (column_def ~cname ~ctype ~cnullable ~ckind:Ck_attr))
+let add_column4 tname cname ctype cnullable ?precision ?scale = common_spec &
+  let ctm = get_ctm ?precision ?scale ctype in
+  Add_column
+    (tname, (column_def ~cname ~ctype ~cnullable ~ckind:Ck_attr ~ctm))
 
 let add_reference4 tname refcolumn reftable cnullable = common_spec &
   Add_column
     ( tname
     , (column_def ~cname:refcolumn ~ctype:"id" ~cnullable
-         ~ckind:(Ck_fk reftable))
+         ~ckind:(Ck_fk reftable) ~ctm:Ctm_none
+      )
     )
 
 let add_reference3 tname reftable cnullable =
@@ -118,12 +150,14 @@ let drop_index2 tname index_expr = common_spec &
 let rename_table2 toldname tnewname = common_spec &
   Rename_table (toldname, tnewname)
 
-let modify_column3 tname cname modif = common_spec &
+let modify_column3 tname cname modif ?precision ?scale = common_spec &
   let cm =
     match modif with
     | "null" -> Cm_set_nullable true
     | "notnull" -> Cm_set_nullable false
-    | new_type -> Cm_set_type new_type
+    | new_type ->
+        let new_ctm = get_ctm ?precision ?scale new_type in
+        Cm_set_type (new_type, new_ctm)
   in
     Modify_column ((column_ref ~tname ~cname ~ckind:Ck_attr), cm)
 
@@ -133,7 +167,7 @@ let modify_reference4 tname refcolumn reftable modif = common_spec &
     | "null" -> Cm_set_nullable true
     | "notnull" -> Cm_set_nullable false
     | _ -> failwith
-        "references can be modified only to \"null\" or \"notnull\""
+        "References can be modified only to \"null\" or \"notnull\""
   in
     Modify_column
       ( (column_ref ~tname ~cname:refcolumn ~ckind:(Ck_fk reftable))
@@ -175,6 +209,7 @@ let drop_table1 tname = common_spec &
 (************************************************)
 
 let create_type2 ty_name ml_type = common_spec &
+  let () = Codegen.check_lid ~place:"type name" ty_name in
   Create_type (ty_name, ml_type)
 
 let pg_of_string1b ty b = common_spec &
@@ -184,7 +219,11 @@ let pg_to_string1b ty b = common_spec &
   Pg_to_string (ty, b)
 
 let pg_ddl2 ty ddl = common_spec &
-  Pg_ddl (ty, ddl)
+  Pg_ddl (ty, "function _ -> " ^ Codegen.Lit.string ddl)
+
+let pg_ddl1b ty body = common_spec &
+  Pg_ddl (ty, body)
 
 let inherit_type2 ty_child ty_base = common_spec &
+  let () = Codegen.check_lid ~place:"type name" ty_child in
   Inherit_type (ty_child, ty_base)
