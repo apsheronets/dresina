@@ -2,3 +2,5 @@
 % get /say/goodbye say_controller goodbye
 
 % get /myint/int_arg:int/mystring/string_arg:string test_controller test_action
+
+% get /product product_controller index

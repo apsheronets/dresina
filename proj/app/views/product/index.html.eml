@@ -1,0 +1,12 @@
+<h1>Products</h1>
+
+<table>
+  <% env#products#for_each begin fun product -> %>
+    <tr>
+      <td><%= product#title %></td>
+      <td><%= product#description %></td>
+      <td><%= product#image_url %></td>
+      <td><%= Decimal.to_string product#price %></td>
+    </tr>
+  <% end; %>
+</table>
