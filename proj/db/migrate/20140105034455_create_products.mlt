@@ -1,0 +1,22 @@
+% create_table products
+  % column title string notnull
+  % column description text notnull
+  % column image_url string notnull
+  % column price decimal ~precision:8 ~scale:2 notnull
+
+(* temporary replace of not implemented now 'db:seed': *)
+% begin up_sql
+    insert into products
+      ( title, description, price, image_url )
+    values
+      ( 'Real World OCaml: Functional programming for the masses'
+      , 'This fast-moving tutorial introduces you to OCaml, an industrial-strength programming language designed for expressiveness, safety, and speed. Through the book''s many examples, you''ll quickly learn how OCaml stands out as a tool for writing fast, succinct, and readable systems code.'
+      , 35.99
+      , 'real_world_ocaml.jpg'
+      )
+    , ( 'OCaml from the Very Beginning'
+      , 'In "OCaml from the Very Beginning" John Whitington takes a no-prerequisites approach to teaching a modern general-purpose programming language. Each small, self-contained chapter introduces a new topic, building until the reader can write quite substantial programs. There are plenty of questions and, crucially, worked answers and hints.'
+      , 33.24
+      , 'ocaml_from_beginning.png'
+      )
+% end
