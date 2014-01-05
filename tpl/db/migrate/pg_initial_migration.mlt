@@ -74,6 +74,12 @@
 % begin pg_of_string decimal
     fun _ctm s ->
       try float_of_string s
+        (* todo: round floats (string-based rounding is ok) to given scale,
+           to make this function usable for importing strings from
+           web forms.  Remember validation "price > 0" (instead of
+           "price >= 0.01" when price is 0.001.  Here such price will be
+           rounded to 0.00, thus failing validation.
+         *)
       with Failure _ -> raise (Db_of_string ("decimal", s))
 % end
 
