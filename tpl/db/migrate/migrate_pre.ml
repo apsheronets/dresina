@@ -94,7 +94,7 @@ let column3 cname ctype cnullable ?precision ?scale =
 
 let reference3 cname tname cnullable = in_table & fun _tname cols_q _loc ->
   Queue.push
-    (column_def ~cname ~ctype:"id" ~cnullable
+    (column_def ~cname ~ctype:"ref" ~cnullable
        ~ckind:(Ck_fk tname) ~ctm:Ctm_none
     )
     cols_q
@@ -118,7 +118,7 @@ let add_column4 tname cname ctype cnullable ?precision ?scale = common_spec &
 let add_reference4 tname refcolumn reftable cnullable = common_spec &
   Add_column
     ( tname
-    , (column_def ~cname:refcolumn ~ctype:"id" ~cnullable
+    , (column_def ~cname:refcolumn ~ctype:"ref" ~cnullable
          ~ckind:(Ck_fk reftable) ~ctm:Ctm_none
       )
     )

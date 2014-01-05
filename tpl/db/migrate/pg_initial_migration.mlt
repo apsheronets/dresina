@@ -52,6 +52,9 @@
 
 
 % inherit_type id bigint
+% inherit_type ref bigint
+% pg_ddl id bigserial
+
 
 
 % create_type integer int
