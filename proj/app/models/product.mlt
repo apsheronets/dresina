@@ -1,0 +1,8 @@
+% table products
+
+(* без указаний -- из базовой таблицы в модель: *)
+% begin data all
+    from products
+   order by id
+% end
+

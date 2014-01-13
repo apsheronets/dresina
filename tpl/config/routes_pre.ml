@@ -1,5 +1,6 @@
 open Cd_All
 open Strings.Latin1
+open Printf
 
 type binding =
   { arg_ident : string

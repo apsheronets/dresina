@@ -1,8 +1,11 @@
 open Migrate_types
 
+let schema_bin_fname = "db/schema.bin"
+and schema_code_fname = "db/schema_code.ml"
+
 (* update it with data types modifications: *)
 
-let marshal_tag = "schema v.1 " ^ Migrate_types.all_types_tag
+let tag = " v.1 (" ^ Migrate_types.all_types_tag ^ ")"
 
 type type_desc =
   { ty_name : string
@@ -27,6 +30,13 @@ type column_def_checked =
   ; cdc_type_mod : column_type_modifier
   }
 
+module Opt_list_cdc_tm = Tagged_marshal.Make(
+   struct
+     type t = column_def_checked list option
+     let tag = "opt_list_cdc" ^ tag
+   end
+  )
+
 type index_db_ident = string
 
 type table_desc =
@@ -39,6 +49,9 @@ type schema =
   { s_types : (string, type_desc) Hashtbl.t
   ; s_tables : (string, table_desc) Hashtbl.t
   }
+
+module Schema_tm = Tagged_marshal.Make
+  (struct type t = schema let tag = "schema" ^ tag end)
 
 let create_empty_schema () =
   { s_types = Hashtbl.create 67

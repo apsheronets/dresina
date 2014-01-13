@@ -8,18 +8,28 @@ let dbpkgs = ["amall.dbi"]
 let webpkgs = ["amall"]
 let allpkgs = List.uniq ~eq:String.eq (dbpkgs @ webpkgs)
 
-let () = Ml_make.wrap_in_module ~m:"Tagged_marshal"
-  "proj-build/internal/common/tagged_marshal.ml"
-  "proj-build/internal/common/tagged_marshal.ml.module"
-
 let () =
   let src = "src/codegen.ml"
   and dst = "proj-build/internal/common/codegen.ml" in
   Ml_make.glue [src] dst
 
-let () = Ml_make.wrap_in_module ~m:"Codegen"
-  "proj-build/internal/common/codegen.ml"
-  "proj-build/internal/common/codegen.ml.module"
+let module_name_of_fname fn =
+  let place = "module_name_of_fname" in
+  let n = Filename.basename fn in
+  let n = change_suffix ~place n ".ml" "" in
+  let m = String.capitalize n in
+  Codegen.check_uid ~place m;
+  m
+
+let () = List.iter
+  (fun fn ->
+     Ml_make.wrap_in_module ~m:(module_name_of_fname fn) fn (fn ^ ".module")
+  )
+  [ "proj-build/internal/common/codegen.ml"
+  ; "proj-build/internal/common/tagged_marshal.ml"
+  ; "proj-build/db/migrate/migrate_types.ml"
+  ; "proj-build/internal/common/schema_types.ml"
+  ]
 
 let () = stage_paths
   ~pkgs:dbpkgs
@@ -61,6 +71,8 @@ let () = Migration.register_make_rules ()
 
 let () = View.register_make_rules ()
 
+let () = Model.register_make_rules ()
+
 let make_copy_from_tpl fn =
   let src = "tpl" // fn
   and dst = "proj-build" // fn in
@@ -68,7 +80,8 @@ let make_copy_from_tpl fn =
 
 let () =
   List.iter make_copy_from_tpl
-    ("Makefile" :: "db/migrate/migrate_types.ml" ::
+    ("Makefile" ::
+     "db/migrate/migrate_types.ml" ::
        List.map (fun n -> "internal" // n)
        [ "common/proj_common.ml"; "server/main_pre.ml"; "server/main_post.ml"
        ; "server/database.ml"; "server/psql.ml"
@@ -81,6 +94,7 @@ let () =
        ; "server/generate_sql.ml"
        ; "common/apply_migrations.ml"
        ; "server/command_db_rollback.ml"
+       ; "common/collection.ml"
        ]
     )
 
@@ -98,8 +112,6 @@ let codegen_action () =
 
 let make_action () =
   codegen_action ();
-  sys_command_ok "make -C proj-build .depend db/schema_code.ml -j1";
-  print_endline "-----------";
   sys_command_ok "make -C proj-build .depend all -j1"
 
 let run_server () =

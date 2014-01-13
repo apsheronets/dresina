@@ -145,3 +145,16 @@ let check_schema_version () =
                     this executable.  Try to recompile executable against \
                     new database schema."
   | EQ -> ()
+
+
+(* returns Postgresql.result with data returned by [sql] query.
+   monadic function.
+ *)
+let pg_query_result sql : Postgresql.result Lwt.t =
+  with_connection & fun conn ->
+  let d = Dbi_pg.expect_result_data & conn#execute sql in
+  let no () = failwith
+    "Database.pg_query_result: only postgresql is supported now" in
+  try d#downcast; no () with
+  | Pg_result_data r -> r
+  | _ -> no ()

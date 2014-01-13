@@ -1,3 +1,5 @@
+exception Db_of_string of (string * string)
+
 % sum_type column_type_modifier
   % sum_constr Ctm_none
   % sum_constr Ctm_decimal

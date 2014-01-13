@@ -3,6 +3,9 @@ module IO = IO_Lwt
 let ( !! ) = Lazy.force
 
 let ( >>= ) = Lwt.bind
+let return = Lwt.return
+let fail = Lwt.fail
+let catch = Lwt.catch
 
 module I = Iteratees.Make(IO)
 
@@ -125,3 +128,4 @@ let hashtbl_for_all pred h =
       h;
     true
   with Htfa -> false
+

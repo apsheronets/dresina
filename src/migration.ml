@@ -60,7 +60,6 @@ let () = List.iter
   (fun (src, dst) ->
      stage
        ~pre:[ "proj-build/internal/common/tagged_marshal.ml.module"
-            ; "proj-build/internal/common/codegen.ml.module"
             ; "tpl/db/migrate/migrate_types.ml"
             ; "tpl/db/migrate/migrate_pre.ml"
             ]
@@ -71,6 +70,8 @@ let () = List.iter
   migrations
 
 
+let reg_all = "proj-build/db/migrate/register_all_migrations.ml"
+
 let () =
   let dep_migs = "MIGRATIONS" in
   Hashtbl.add Make.virt_deps dep_migs begin
@@ -79,7 +80,7 @@ let () =
       (fun (src, _dst) -> src)
       migrations
   end;
-  let dst = "proj-build/db/migrate/register_all_migrations.ml" in
+  let dst = reg_all in
   Make.make [dst] ~virtdeps:[dep_migs] [] begin fun () ->
     let contents =
       Cg.Struc.items &
@@ -100,6 +101,22 @@ let () =
       Filew.spit_bin dst contents
   end
 
+
+let migrate_targets = reg_all :: List.map (fun (_src, dst) -> dst) migrations
+
+let schema_targets =
+  ["proj-build/db/schema_code.ml"; "proj-build/db/schema.bin"]
+
+let () =
+  let ml =
+    [ "proj-build/internal/common/migrations.ml"
+    ; "proj-build/internal/common/schema_types.ml"
+    ; "proj-build/internal/common/apply_migrations.ml"
+    ; "proj-build/internal/common/proj_common.ml"
+    ] in
+  Make.make schema_targets (ml @ migrate_targets) begin fun () ->
+    sys_command_ok "make -C proj-build .depend db/schema_code.ml -j1"
+  end
 
 
 let register_make_rules () = ()

@@ -132,29 +132,45 @@ let () =
       (fun (cntr, view) -> cntr ^ "/" ^ view)
       cntr_view_list
   end;
-  let dst = "proj-build/internal/server/respond_with_view.ml" in
-  Make.make [dst] ~virtdeps:[dep_views] [] begin fun () ->
+  let dst = "proj-build/internal/server/models_views.ml" in
+  Make.make [dst] ~virtdeps:[dep_views; Model.dep_models] [] begin fun () ->
     let contents =
-      Cg.line_directive "__respond_with_view__" 1 ^
+      Cg.line_directive "__models_views__" 1 ^
       "open Proj_common\n\n" ^
-      let groupped = List.group_pairs ~fst_eq:String.eq cntr_view_list in
+      let cv_groupped = List.group_pairs ~fst_eq:String.eq cntr_view_list in
+      let models = List.map (fun m -> (m.Model.base, ())) Model.models in
+      let groupped = List.merge_pairs ~fst_compare:String.compare
+        cv_groupped models in
       Cg.Struc.items & List.map
-        (fun (cntr, views) ->
-           Cg.Struc.module_ (String.capitalize cntr) & List.map
-             (fun view ->
-                Cg.Struc.module_ (String.capitalize view) & List.one &
-                Cg.Struc.func "render" ["?(layout=Layout.application)"; "env"] &
-                Cg.Expr.call "respond_renderer"
-                  [ "layout"
-                  ; Cg.Expr.call_gen
-                      (Cg.Expr.modqual
-                         views_modname
-                         (view_func_name ~cntr ~view)
-                      )
-                      ["env"]
-                  ]
-             )
-             views
+        (fun (cntr, views_or_model) ->
+           Cg.Struc.module_ (String.capitalize cntr) begin
+             begin match views_or_model with
+             | `Fst views | `Both (views, _) ->
+                 List.map
+                   (fun view ->
+                      Cg.Struc.module_ (String.capitalize view) & List.one &
+                      Cg.Struc.func "render"
+                        ["?(layout=Layout.application)"; "env"] &
+                      Cg.Expr.call "respond_renderer"
+                        [ "layout"
+                        ; Cg.Expr.call_gen
+                            (Cg.Expr.modqual
+                               views_modname
+                               (view_func_name ~cntr ~view)
+                            )
+                            ["env"]
+                        ]
+                   )
+                   views
+             | `Snd _ -> []
+             end
+             @
+             begin match views_or_model with
+             | `Fst _views -> []
+             | `Both (_, ()) | `Snd () ->
+                 ["include Model_" ^ cntr]
+             end
+           end
         )
         groupped
     in

@@ -5,9 +5,6 @@ module Cg = Codegen
 
 (**********************************)
 
-let schema_bin_fname = "db/schema.bin"
-and schema_code_fname = "db/schema_code.ml"
-
 let schema = create_empty_schema ()
 
 let hashtbl_map_to_list f h =
@@ -22,12 +19,29 @@ let emit_schema_code () =
      let ddl_of_type : (string, column_type_modifier -> string) Hashtbl.t =\n\
     \  Hashtbl.create 67\n"
     ^ Cg.Struc.items
-        (hashtbl_map_to_list
+        (List.flatten &
+         hashtbl_map_to_list
            (fun tyname tydesc ->
-              let body = get_type_attr (fun ty -> ty.ty_pg_ddl) tydesc in
-              Printf.sprintf
+              let ddl_body = get_type_attr (fun ty -> ty.ty_pg_ddl) tydesc in
+              let ml_type = tydesc.ty_ml_name in
+              [ Printf.sprintf
                 "let () = Hashtbl.add ddl_of_type %S (\n%s\n)\n"
-                  tyname body
+                  tyname ddl_body
+              ;
+                Printf.sprintf
+                  "let pg_%s_of_string\
+                  \ : column_type_modifier -> string -> %s\
+                  \ =\n%s\n"
+                  tyname ml_type
+                  (get_type_attr (fun ty -> ty.ty_pg_of_string) tydesc)
+              ;
+                Printf.sprintf
+                  "let pg_%s_to_string\
+                  \ : column_type_modifier -> %s -> string\
+                  \ =\n%s\n"
+                  tyname ml_type
+                  (get_type_attr (fun ty -> ty.ty_pg_to_string) tydesc)
+              ]
            )
            schema.s_types
         )
@@ -58,9 +72,7 @@ let make_schema () =
       ()
     )
     m;
-  Tagged_marshal.to_file
-    ~tag:Schema_types.marshal_tag schema_bin_fname
-    schema;
+  Schema_types.Schema_tm.to_file schema_bin_fname schema;
   emit_schema_code ()
 
 let () =

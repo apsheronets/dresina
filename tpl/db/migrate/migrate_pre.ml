@@ -1,4 +1,7 @@
 (* pre *)
+open Cd_All
+open Strings.Latin1
+open Printf
 
 (* TODO: проверять имена таблиц/столбцов на отсутствие кавычек тут. *)
 

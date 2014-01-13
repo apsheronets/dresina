@@ -177,6 +177,8 @@ let dir_with_loc =
  ;; \n\
 "
 
+let codegen_module = "proj-build/internal/common/codegen.ml.module"
+
 (* outs: list of ("ident_for_output_command", "output_to_filename.ml") *)
 let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
   assert (outs <> []);
@@ -192,7 +194,8 @@ let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
   let (tmpfn, out_ch) = Filename.open_temp_file
     ~mode:[Open_binary] "stage" ".ml" in
   output_string out_ch (prepare_output outs);
-  copy_ml_to_channel ~out_ch "src/codegen.ml";
+  copy_ml_to_channel ~out_ch codegen_module;
+  output_string out_ch "open Codegen;;\n";
   output_string out_ch dir_with_loc;
   output_string out_ch Cg.dummy_line_directive;
   output_string out_ch & Cg.Struc.expr "__mlt_filename" & Cg.Lit.string mlt;
@@ -228,15 +231,18 @@ let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
 let do_stage ?(pkgs = []) ~mlt ~pre ~post ~fname =
   do_stage_multi ~pkgs ~mlt ~pre ~post ~outs:[("", fname)]
 
-let stage_multi ?(pkgs = []) ~mlt ~pre ~post targets =
-  Make.make (List.map snd targets) (mlt :: (pre @ post)) &
-  do_stage_multi ~pkgs ~mlt ~pre ~post ~outs:targets
+let stage_multi ?(pkgs = []) ?(add_deps = []) ~mlt ~pre ~post targets =
+  Make.make
+    (List.map snd targets)
+    (codegen_module :: mlt :: 
+       List.rev_append add_deps (List.rev_append pre post)
+    ) &
+    do_stage_multi ~pkgs ~mlt ~pre ~post ~outs:targets
 
-let stage ?(pkgs = []) ~mlt ~pre ~post target =
-  stage_multi ~pkgs ~mlt ~pre ~post [("", target)]
+let stage ?(pkgs = []) ?(add_deps = []) ~mlt ~pre ~post target =
+  stage_multi ~pkgs ~add_deps ~mlt ~pre ~post [("", target)]
 
-let has_slash p =
-  Cg.string_index_opt p '/' <> None
+let has_slash p = String.contains p '/'
 
 (* calls [stage] with common conventions on files paths *)
 let stage_multi_paths ?(pkgs = []) ~rel_path ~mlt ~pre ~post targets =

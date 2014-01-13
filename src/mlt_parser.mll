@@ -2,6 +2,13 @@
 
 module Cg = Codegen
 
+let error fname lineno fmt =
+  Printf.ksprintf
+    (fun s -> failwith (Printf.sprintf
+       "file %S, line %i: %s" fname lineno s)
+    )
+    fmt
+
 let ml_code txt = Cg.Sum.constr "Ml" [ Cg.Lit.string txt ]
 
 (* returns code that will be placed inside Dir constructor *)
@@ -195,7 +202,7 @@ and dir_arg fname lineno = parse
   '~'
     {
       let label = ident lexbuf in
-      let () = labelled_colon lexbuf in
+      let () = labelled_colon fname lineno lexbuf in
       match dir_arg_no_label fname lineno lexbuf with
       | None -> failwith "labelled argument must have some value"
       | Some ml_code -> `Lab (label, ml_code)
@@ -228,6 +235,16 @@ and dir_arg_no_label fname lineno = parse
       Some (Cg.Lit.string str)
     }
 
+| '[' space*
+    {
+      Some (list fname lineno [] lexbuf)
+    }
+
+| ']'
+    {
+      error fname lineno "mismatched ']'"
+    }
+
 | space
     {
       assert false
@@ -236,11 +253,26 @@ and dir_arg_no_label fname lineno = parse
 | ""
     {
       let ch = peek_char lexbuf in
-      failwith (Printf.sprintf
-        "file %S, line %i: error parsing directive arguments on character %S"
-        fname lineno ch
-      )
+      error fname lineno "error parsing directive arguments on character %S" ch
     }
+
+and list fname lineno rev_acc = parse
+
+  ']' space*
+    {
+      Cg.Sum.constr "`List" [Cg.Expr.list (List.rev rev_acc)]
+    }
+
+| ""
+    {
+      match dir_arg_no_label fname lineno lexbuf with
+      | None ->
+          error fname lineno "list must be finished before end-of-{line,file}"
+      | Some elt ->
+          let rev_acc = elt :: rev_acc in
+          list fname lineno rev_acc lexbuf
+    }
+
 
 and peek_char = parse
   anychar as c
@@ -248,7 +280,7 @@ and peek_char = parse
 | ""
     { "<eof>" }
 
-and labelled_colon = parse
+and labelled_colon fname lineno = parse
 
   ':' space*
     {
@@ -257,7 +289,7 @@ and labelled_colon = parse
 
 | ""
     {
-      failwith "expected ':' after '~label'"
+      error fname lineno "expected ':' after '~label'"
     }
 
 (* must eat closing quote and spaces after it.
@@ -270,12 +302,9 @@ and quoted_string fname lineno = parse
       str
     }
 
-| linechar_no_quote* eol_char
+| linechar_no_quote* (eol | eof)
     {
-      failwith (Printf.sprintf
-        "file %S, line %i: quote must be closed before end-of-line"
-        fname lineno
-      )
+      error fname lineno "quote must be closed before end-of-{line,file}"
     }
 
 | ""

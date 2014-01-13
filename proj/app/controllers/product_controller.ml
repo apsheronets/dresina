@@ -1,4 +1,11 @@
 let index () =
+  Product.all () >>= fun env ->
+  Product.Index.render env
+
+
+
+(* left here to show a way to manually fetch data into objects *)
+let _old_index () =
   begin Database.with_connection & fun conn ->
     object
       val products =
@@ -8,6 +15,7 @@ let index () =
             let d = expect_result_data & conn#execute
               "select * from products order by id" in
             d#map_to_list ((fun title description image_url price ->
+              let price = float_of_string (Decimal.to_string price) in
               object
                 method title = title
                 method description = description
@@ -17,7 +25,7 @@ let index () =
               <$> nstring "title" <*> nstring "description"
               <*> nstring "image_url" <*> nnumber "price")
           end
-          method for_each f = List.iter f data
+          method iter f = List.iter f data
         end
       method products = products
     end

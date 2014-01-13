@@ -1,3 +1,5 @@
+let invalid_arg fmt = Codegen.invalid_arg fmt
+
 let with_file_gen fopen fclose fn func =
   let ch = fopen fn in
   let finally () = fclose ch in
@@ -11,10 +13,13 @@ let with_file_gen fopen fclose fn func =
 let with_file_in_bin fn func = with_file_gen open_in_bin close_in fn func
 let with_file_out_bin fn func = with_file_gen open_out_bin close_out fn func
 
-let to_file ?(flags = []) ~tag fname v =
+let check_tag ~place ~tag =
   if String.contains tag '\n'
-  then invalid_arg "Tagged_marshal.to_file: tag must not contain newlines"
-  else
+  then invalid_arg "Tagged_marshal.%s: tag must not contain newlines" place
+  else ()
+
+let to_file ?(flags = []) ~tag fname v =
+  check_tag ~place:"to_file" ~tag;
   with_file_out_bin fname begin fun ch ->
     output_string ch (tag ^ "\n");
     Marshal.to_channel ch v flags
@@ -29,4 +34,18 @@ let from_file ~tag fname =
       tag tag_read)
     else
       Marshal.from_channel ch
+  end
+
+let to_string ?(flags = []) ~tag v =
+  check_tag ~place:"to_string" ~tag;
+  tag ^ "\n" ^
+  Marshal.to_string v flags
+
+module Make (T : sig type t val tag : string end)
+ =
+  struct
+    open T
+    let to_file ?(flags = []) fn (v : t) = to_file ~flags ~tag fn v
+    let from_file fn = ((from_file ~tag fn) : t)
+    let to_string ?(flags = []) (v : t) = to_string ~flags ~tag v
   end
