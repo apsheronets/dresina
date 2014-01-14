@@ -3,4 +3,4 @@
 
 % get /myint/int_arg:int/mystring/string_arg:string test_controller test_action
 
-% get /product product_controller index
+% get /products product_controller index
