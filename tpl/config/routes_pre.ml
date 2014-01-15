@@ -6,8 +6,7 @@ type binding =
   { arg_ident : string
       (* identifier with bound string (argument name to be passed to
          controller) *)
-  ; bound_ident : string
-      (* ml code with bound value (__uri_patt_N) *)
+  ; level : int
   ; from_string : string
       (* ml code that translates __uri_patt to ml value *)
   ; to_string : string -> string
@@ -16,6 +15,9 @@ type binding =
        *)
   }
 
+let bound_ident ~level =
+  Expr.lid ("__uri_patt_" ^ string_of_int level)
+
 type action =
   { cntr_name : string
   ; action_name : string
@@ -23,23 +25,30 @@ type action =
   ; linedir : string
   }
 
-type level =
-| Bind of string (* ident *) * level (* below *)
-| Map of (string * level) list
-| Action of action
+type metaseg =
+[ `Fixed of string
+| `Binding of binding
+]
 
-type context = level ref
+type metapath = metaseg list
+
+type route = metapath * action
+
+type context = route list ref
 
 (****************************)
 
 let no_route_ml = "raise No_route"
 
 let binding ~level ~ty ~id =
-  let b = Expr.lid ("__uri_patt_" ^ string_of_int level) in
+  let b = bound_ident ~level in
   let (from_string, to_string) =
     match ty with
     | "int" ->
-        ( "(try int_of_string " ^ b ^ " with Failure _ -> " ^ no_route_ml ^ ")"
+        ( "(try int_of_string "
+          ^ b
+          ^ " with Failure _ -> "
+          ^ no_route_ml ^ ")"
         , fun ident -> "string_of_int " ^ ident
         )
     | "string" ->
@@ -50,12 +59,12 @@ let binding ~level ~ty ~id =
         "routes: type %S is not supported in uri pattern" ty
   in
   { arg_ident = id
-  ; bound_ident = b
+  ; level = level
   ; from_string = from_string
   ; to_string = to_string
   }
 
-let meta_segs path =
+let meta_segs path : metapath =
   List.mapi
     (fun level seg ->
        match String.split ( ( = ) ':' ) seg with
@@ -84,41 +93,7 @@ let rec bindings_of_mpath ?(acc=[]) ?(level=0) mpath =
             in
             bindings_of_mpath ~acc ~level:(level + 1) t
 
-let rec add_handler level mpath action =
-  match mpath, level with
-  | [], (Bind _ | Map _) -> failwith
-      "routes: uri pattern is too short"
-  | [], Action _ -> failwith
-      "routes: route already exists"
-  | (`Fixed _ :: _t), Bind _ -> failwith
-      "routes: uri pattern contains fixed segment while other routes already \
-       bind it as variable"
-  | (`Binding _ :: _t), Map _ -> failwith
-      "routes: uri pattern contains binding while other routes already use \
-       this uri segment as fixed one"
-  | ((`Fixed _ | `Binding _) :: _t), Action _ -> failwith
-      "routes: a shorter route already matches this pattern"
-  | `Binding _ :: t, Bind (_ident, level) ->
-      add_handler level t action
-  | (`Fixed s :: t), Map map ->
-      Map
-        (match List.Assoc.get_opt ~keq s map with
-         | None ->
-             let level =
-               let rec loop mpath =
-                 match mpath with
-                 | [] -> Action action
-                 | `Fixed s :: t ->
-                     Map [(s, loop t)]
-                 | `Binding b :: t ->
-                     Bind (b.bound_ident, loop t)
-               in
-                 loop t
-             in
-               List.Assoc.add s level map
-         | Some level ->
-             List.Assoc.replace ~keq s (add_handler level t action) map
-        )
+let rec add_handler routes mpath action = (mpath, action) :: routes
 
 (**************************************)
 

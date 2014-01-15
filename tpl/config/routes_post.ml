@@ -1,19 +1,3 @@
-(*
-let rec dump_routes ?(indent = 0) level =
-  let ind = String.make (4 * indent) ' ' in
-  let pr fmt = Printf.(ksprintf (fun s -> printf "%s%s\n%!" ind s) fmt) in
-  match level with
-  | Action a -> pr "action: %s" a
-  | Bind (bind_ident, level) ->
-      (pr "bind %s" bind_ident; dump_routes ~indent:(indent + 1) level)
-  | Map m ->
-      List.iter
-        (fun (s, level) ->
-           (pr "%S" s; dump_routes ~indent:(indent + 1) level)
-        )
-        m
-*)
-
 let rg_dir = line_directive "_routing_generated_" 0
 
 let conctx_modty = "Proj_common.CONTROLLER_CONTEXT"
@@ -37,41 +21,82 @@ let routing_action a =
   end
   end
 
-let rec generate_routing_level level =
-  match level with
-  | Action a ->
-      Expr.match_ "path"
-        [ ("[] | \"\" :: []", routing_action a)
-        ; ("_", no_route_ml)
-        ]
-  | Bind (bind_ident, level) ->
-      Expr.match_ "path"
-        [ ("[]", no_route_ml)
-        ; ( sprintf "%s :: path" bind_ident
-          , generate_routing_level level
-          )
-        ]
-  | Map m ->
-      Expr.match_ "path"
-        ( List.map
-            (fun (s, level) ->
-               ( sprintf "%s :: path" (Lit.string s)
-               , generate_routing_level level
-               )
-            )
-            m
-        @ [("_", no_route_ml)]
+
+let rec generate_routing_level level routes =
+  if routes = []
+  then
+    no_route_ml
+  else
+    let (this_level, next_levels) = List.partition
+      (fun (mp, _ac) -> mp = [])
+      routes
+    in
+    Expr.match_ "path"
+      [ ( "[] | \"\" :: []"
+        , match this_level with
+          | [] -> no_route_ml
+          | (mp, ac) :: _t ->
+              assert (mp = []);
+              (* todo:
+              List.iter
+                (fun rt ->
+                   ... "Unused route."
+                )
+                t;
+              *)
+              routing_action ac
         )
+      ;
+        if next_levels = []
+        then
+          ( "_"
+          , no_route_ml
+          )
+        else
+          let this_seg_ident = bound_ident ~level in
+          ( this_seg_ident ^ " :: path"
+          , let (fixeds, bindings) = List.partition_map
+              (fun (mp, ac) ->
+                 match mp with
+                 | [] -> assert false
+                 | fst :: rest ->
+                     match fst with
+                     | `Fixed str -> `Left (str, (rest, ac))
+                     | `Binding _ -> `Right (rest, ac)
+              )
+              next_levels
+            in
+            let fixeds_groupped = List.group_pairs
+              ~fst_eq:String.eq fixeds in
+            Expr.match_ this_seg_ident
+              ( List.map
+                  (fun (grp, routes) ->
+                     ( Lit.string grp
+                     , generate_routing_level (level + 1) routes
+                     )
+                  )
+                  fixeds_groupped
+              @
+                [ ( "_"
+                  , if bindings = []
+                    then no_route_ml
+                    else generate_routing_level (level + 1) bindings
+                  )
+                ]
+              )
+          )
+      ]
+
 
 let generate_routing level =
   rg_dir ^
   "open Main_pre\n" ^
   "open Proj_common\n" ^
-  Struc.func "routes" ["path"; "conctx"] (generate_routing_level level)
+  Struc.func "routes" ["path"; "conctx"] (generate_routing_level 0 level)
 
 type con_seg_bind =
 [ `Cseg of string
-| `Cbind of string
+| `Cbind of int
 ]
 
 type con_seg_code =
@@ -112,33 +137,34 @@ let cscode_of_csbind
  = fun bs csb ->
      match csb with
      | (`Cseg _) as cseg -> cseg
-     | `Cbind bound_ident ->
-         match List.filter (fun b -> b.bound_ident = bound_ident) bs with
+     | `Cbind level ->
+         match List.filter (fun b -> b.level = level) bs with
          | [b] -> `Ccode (b.arg_ident, b.to_string)
          | _ -> assert false
 
-let rec gather_controllers ~acc ~path_rev level =
-  match level with
-  | Map m ->
-      List.fold_left
-        (fun acc (seg, level) ->
-           let path_rev = `Cseg seg :: path_rev in
-           gather_controllers ~acc ~path_rev level
-        )
-        acc
-        m
-  | Bind (bound_ident, level) ->
-      gather_controllers ~acc ~path_rev:(`Cbind bound_ident :: path_rev) level
-  | Action a ->
-      let segcode = List.rev_map (cscode_of_csbind a.bindings) path_rev in
-      let strcode = add_slashes segcode in
-      let csc = concat_str_code strcode in
-      (a, csc) :: acc
+let gather_controllers routes =
+  List.map
+    (fun (mp, ac) ->
+       let path = List.mapi
+         (fun level ->
+          function
+          | `Fixed s -> `Cseg s
+          | `Binding _b -> `Cbind level
+         )
+         mp
+       in
+       let segcode = List.map (cscode_of_csbind ac.bindings) path in
+       let strcode = add_slashes segcode in
+       let csc = concat_str_code strcode in
+       (ac, csc)
+    )
+    routes
 
-let generate_routes level =
+
+let generate_routes routes =
   line_directive "_routes_generated_" 0 ^ begin
-  level
-  |> gather_controllers ~acc:[] ~path_rev:[]
+  routes
+  |> gather_controllers
   |> List.map
        (fun ((action, _csc) as x) ->
           (action.cntr_name, x)
@@ -176,9 +202,10 @@ let generate_routes level =
   |> Struc.items
   end
 
+
 (******************************************)
 
-let ctx = ref (Map [])
+let ctx = ref []
 
 let generate mlt =
   begin
@@ -189,6 +216,6 @@ let generate mlt =
       )
       mlt
   end;
-  (* dump_routes !ctx *)
-  out_routing (generate_routing !ctx);
-  out_routes (generate_routes !ctx)
+  let r = List.rev !ctx in
+  out_routing (generate_routing r);
+  out_routes (generate_routes r)
