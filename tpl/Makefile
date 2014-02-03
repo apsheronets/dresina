@@ -3,11 +3,12 @@ server_name = dresina-server
 server_packages = amall,amall.dbi,threads,lwt,lwt.preemptive
 all_packages = amall,amall.dbi,threads,lwt,lwt.preemptive
 
+find_pred = -name '*.ml'
 server_topdirs = app config internal/common internal/server db
-server_mls = $(shell find $(server_topdirs) -name '*.ml')
+server_mls = $(shell find $(server_topdirs) $(find_pred))
 server_dirs = $(shell find $(server_topdirs) -type d)
 
-all_mls = $(shell find . -name '*.ml')
+all_mls = $(shell find . $(find_pred))
 all_dirs = $(shell find . -type d)
 all_ml_includes = $(addprefix -I , $(server_dirs))
 

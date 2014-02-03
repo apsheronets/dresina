@@ -42,7 +42,9 @@ let models = model_src_dir |> readdir_list |>
 let stage_gather_ml = "tpl/app/models/stage_gather.ml.part"
 let stage_code_ml = "tpl/app/models/stage_code.ml.part"
 
-let gather_deps_list = Migration.schema_targets
+let sql_lexer_ml = "proj-build/internal/common/sql_lexer.ml"
+
+let gather_deps_list = sql_lexer_ml :: Migration.schema_targets
 
 (*
   сами описания пре-кусок будет скидывать в файлики, типа
@@ -53,6 +55,7 @@ let model_common_pre =
   [ "proj-build/internal/common/tagged_marshal.ml.module"
   ; "proj-build/db/migrate/migrate_types.ml.module"
   ; "proj-build/internal/common/schema_types.ml.module"
+  ; "proj-build/internal/common/sql_lexer.ml.module"
   ; "tpl/app/models/model_pre.ml"
   ]
 

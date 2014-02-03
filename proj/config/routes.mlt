@@ -3,4 +3,15 @@
 
 % get /myint/int_arg:int/mystring/string_arg:string test_controller test_action
 
+
+
 % get /products product_controller index
+
+% get /products/new product_controller new_
+% post /products/create product_controller create
+
+% post /products/id:id/delete product_controller delete
+
+% get /products/id:id/edit product_controller edit
+% post /products/id:id/update product_controller update
+

@@ -1,12 +1,27 @@
 <h1>Products</h1>
 
 <table>
+  <tr>
+    <th> </th>
+    <th>Title</th>
+    <th>Description</th>
+    <th>Price</th>
+    <th>Actions</th>
+  </tr>
   <% env#products#iter begin fun product -> %>
     <tr>
+      <td><%=raw image_tag product#image_url ~alt:product#title ~classes:["products_list__image"] %>
+      </td>
       <td><%= product#title %></td>
-      <td><%= product#description %></td>
-      <td><%= product#image_url %></td>
+      <td><%= truncate 100 product#description %></td>
       <td><%= sprintf "%.2f" product#price %></td>
+      <td>
+        <%=raw link_to "Edit" & Route.Product_controller.Edit.path ~id:product#id %>
+        <br/>
+        <%=raw button_to "Delete" & Route.Product_controller.Delete.path ~id:product#id %>
+      </td>
     </tr>
   <% end; %>
 </table>
+
+<%=raw link_to "New product" Route.Product_controller.New_.path %>

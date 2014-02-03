@@ -1,6 +1,6 @@
 let context =
   { cols = None
-  ; fetchers_names = Hashtbl.create 13
+  ; data_names = Hashtbl.create 13
   }
 
 let generate lst =
@@ -11,5 +11,5 @@ let generate lst =
     )
     lst;
   gather (fun () ->
-    out & Opt_list_cdc_tm.to_string context.cols
+    out & Opt_string_and_list_cdc_tm.to_string context.cols
   ) ()

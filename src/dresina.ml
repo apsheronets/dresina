@@ -29,6 +29,7 @@ let () = List.iter
   ; "proj-build/internal/common/tagged_marshal.ml"
   ; "proj-build/db/migrate/migrate_types.ml"
   ; "proj-build/internal/common/schema_types.ml"
+  ; "proj-build/internal/common/sql_lexer.ml"
   ]
 
 let () = stage_paths
@@ -86,7 +87,7 @@ let () =
        [ "common/proj_common.ml"; "server/main_pre.ml"; "server/main_post.ml"
        ; "server/database.ml"; "server/psql.ml"
        ; "server/command_db_create.ml"; "server/command_db_drop.ml"
-       ; "server/viewHelpers.ml"
+       ; "server/view_helpers.ml"
        ; "common/tagged_marshal.ml"
        ; "common/migrations.ml"; "make_schema/make_schema.ml"
        ; "common/schema_types.ml"
@@ -95,8 +96,21 @@ let () =
        ; "common/apply_migrations.ml"
        ; "server/command_db_rollback.ml"
        ; "common/collection.ml"
+       ; "common/forms_internal.ml"
+       ; "common/sql_lexer.mll"
+       ; "server/models_internal.ml"
        ]
     )
+
+let () =
+  let dst = Model.sql_lexer_ml in
+  let src = dst ^ "l" in
+  Make.make1
+    dst
+    [src]
+    begin fun () ->
+      sys_command_ok & "ocamllex " ^ src
+    end
 
 let () =
   let src = "tpl/db/migrate/pg_initial_migration.mlt"

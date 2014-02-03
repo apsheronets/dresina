@@ -5,11 +5,11 @@ let conctx_modty = "Proj_common.CONTROLLER_CONTEXT"
 let routing_action a =
   Expr.let_in "module Ctx" ("(val conctx : " ^ conctx_modty ^ ")") begin
   "\n" ^ a.linedir ^
-  Expr.let_in ~oneline:true "module Con"
+  Expr.let_in ~oneline:true (sprintf "module %s" a.cntr_name)
     (sprintf "%s.Controller(Ctx)" a.cntr_name)
   begin
     "\n" ^ a.linedir ^
-    "((" ^ Expr.modqual "Con" a.action_name ^
+    "((" ^ Expr.modqual a.cntr_name a.action_name ^
     String.concat "" begin
         List.map
           (fun b ->
@@ -88,11 +88,30 @@ let rec generate_routing_level level routes =
       ]
 
 
-let generate_routing level =
+let generate_routing routes =
   rg_dir ^
   "open Main_pre\n" ^
   "open Proj_common\n" ^
-  Struc.func "routes" ["path"; "conctx"] (generate_routing_level 0 level)
+  let by_meth = List.group_pairs ~fst_eq:( = ) routes in
+  let meth_no_routes =
+    List.minus
+      all_meths ~proj1:identity
+      by_meth ~proj2:fst
+      ~compare:Pervasives.compare
+  in
+  Struc.func "routes" ["meth"; "path"; "conctx"] &
+  Expr.match_ "meth" begin
+    List.map
+      (fun (meth, level) ->
+         ( ml_of_meth meth
+         , (generate_routing_level 0 level)
+         )
+      )
+      by_meth
+    @
+    List.map (fun m -> (ml_of_meth m, no_route_ml)) meth_no_routes
+  end
+
 
 type con_seg_bind =
 [ `Cseg of string
@@ -164,6 +183,7 @@ let gather_controllers routes =
 let generate_routes routes =
   line_directive "_routes_generated_" 0 ^ begin
   routes
+  |> List.map snd  (* remove request methods *)
   |> gather_controllers
   |> List.map
        (fun ((action, _csc) as x) ->

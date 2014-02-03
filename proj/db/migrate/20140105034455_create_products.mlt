@@ -3,6 +3,7 @@
   % column description text notnull
   % column image_url string notnull
   % column price decimal ~precision:8 ~scale:2 notnull
+  % column optcol string null
 
 (* temporary replace of not implemented now 'db:seed': *)
 % begin up_sql

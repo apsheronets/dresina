@@ -30,13 +30,18 @@ type metaseg =
 | `Binding of binding
 ]
 
+type meth = [ `GET | `POST ]
+let all_meths = [`GET; `POST]
+let ml_of_meth : meth -> string = function `GET  -> "`GET" | `POST -> "`POST"
+
 type metapath = metaseg list
 
-type route = metapath * action
+type route = meth * (metapath * action)
 
 type context = route list ref
 
 (****************************)
+
 
 let no_route_ml = "raise No_route"
 
@@ -50,6 +55,13 @@ let binding ~level ~ty ~id =
           ^ " with Failure _ -> "
           ^ no_route_ml ^ ")"
         , fun ident -> "string_of_int " ^ ident
+        )
+    | "id" | "int64" ->
+        ( "(try Int64.of_string "
+          ^ b
+          ^ " with Failure _ -> "
+          ^ no_route_ml ^ ")"
+        , fun ident -> "Int64.to_string " ^ ident
         )
     | "string" ->
         ( b
@@ -93,11 +105,12 @@ let rec bindings_of_mpath ?(acc=[]) ?(level=0) mpath =
             in
             bindings_of_mpath ~acc ~level:(level + 1) t
 
-let rec add_handler routes mpath action = (mpath, action) :: routes
+let rec add_handler routes meth mpath action =
+  (meth, (mpath, action)) :: routes
 
 (**************************************)
 
-let get3 uri_patt_str cntr_name cntr_meth context =
+let handler meth uri_patt_str cntr_name cntr_meth context =
   match Uri.parse uri_patt_str with
   | None -> failwith "routes: can't parse uri pattern"
   | Some uri_patt ->
@@ -122,5 +135,7 @@ let get3 uri_patt_str cntr_name cntr_meth context =
           ; linedir = directive_linedir ()
           }
         in
-        context := add_handler !context mpath action
+        context := add_handler !context meth mpath action
           
+let get3 = handler `GET
+let post3 = handler `POST

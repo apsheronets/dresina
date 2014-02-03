@@ -38,4 +38,4 @@ setup.data:
 # OASIS_STOP
 
 run: all
-	env OCAMLRUNPARAM=b ./dresina.byte make && proj-build/dresina-server db:migrate
+	env OCAMLRUNPARAM=b ./dresina.byte make && proj-build/dresina-server db:migrate && env OCAMLRUNPARAM=b proj-build/dresina-server

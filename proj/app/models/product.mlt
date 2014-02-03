@@ -6,3 +6,7 @@
    order by id
 % end
 
+% begin data single ~single:true
+    from products
+   where @id : id = id
+% end

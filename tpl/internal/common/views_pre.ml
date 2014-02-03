@@ -1,4 +1,4 @@
 open Proj_common
-open ViewHelpers
+open View_helpers
 
-let _dummy = ()
+let rec _dummy = ()

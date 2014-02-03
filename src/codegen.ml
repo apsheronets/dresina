@@ -51,6 +51,23 @@ let check_uid ~place n =
       check_failed ~place ~arg:n
         "uppercase identifier must begin with 'A'..'Z'"
 
+let check_sum_constr ~place n =
+  if n = ""
+  then
+    check_failed ~place "sum constructor identifier can't be empty"
+  else
+    let c = n.[0] in
+    if (c >= 'A' && c <= 'Z') || c = '`'
+    then
+      if ident_ok n
+      then ()
+      else check_failed ~place ~arg:n
+        "sum constructor identifier: bad characters"
+    else
+      check_failed ~place ~arg:n
+        "sum constructor identifier must begin with 'A'..'Z' or '`'"
+
+
 let check_lid ~place n =
   if n = ""
   then
@@ -81,48 +98,116 @@ let ml_of_string = Lit.string
 let ml_of_int = Lit.int
 let ml_of_bool = Lit.bool
 
-let codegen_cur_indent = ref 0
-let do_indent ml =
-  let ind = !codegen_cur_indent in
+let line_is_blank l =
+  let len = String.length l in
+  let rec loop i =
+    if i = len
+    then true
+    else
+      let c = l.[i] in
+      if c = '\n'
+      then assert false
+      else
+        if c = '\x20' || c = '\x09'
+        then loop (i + 1)
+        else false
+  in
+    loop 0
+
+let indent ind ml =
   if ind = 0
   then ml
   else
+    let () = assert (ind > 0) in
     let pre = String.make ind '\x20' in
     ml |>
     String.split_exact ( ( = ) '\n' ) |>
     List.map
       (fun line ->
-         if line <> "" && line.[0] = '#'  (* line directive *)
+         if line_is_blank line || line.[0] = '#' (* line directive *)
          then line
          else pre ^ line
       ) |>
     String.concat "\n"
 
-let indent add ml =
-  assert (add > 0);
-  let old_ind = !codegen_cur_indent in
-  let finally () = codegen_cur_indent := old_ind in
-  try
-    codegen_cur_indent := old_ind + add;
-    let ml = do_indent ml in
-    finally ();
-    ml
-  with
-  | e -> (finally (); raise e)
+
+(* пусть остаётся для списков как есть. *)
+let format_mids ~when_0 ~when_1 ~first ~mid ~last lst =
+  match lst with
+  | [] -> when_0 ()
+  | h :: [] -> when_1 h
+  | h :: (m :: t) ->
+      first h;
+      let rec inner h t =
+        match t with
+        | h' :: t' -> mid h; inner h' t'
+        | [] -> last h
+      in
+        inner m t
+
+let has_first_n_spaces n str =
+  String.length str >= n &&
+  (let rec loop i =
+     if i = n
+     then true
+     else str.[i] = ' ' && loop (i + 1)
+   in
+     loop 0
+  )
+
+let format_multiline ~tokbegin ~tokend ~tokmid lst =
+  match lst with
+  | [] -> tokbegin ^ " " ^ tokend ^ "\n"
+  | h :: t ->
+      let ind = 1 + max (String.length tokbegin) (String.length tokmid) in
+      let rec inner is_first h t =
+        let indented = indent ind h in
+        let res =
+          let (first_line, sep, rest) =
+            String.split_by_first ((=) '\n') indented in
+          let (tok, len) =
+            if is_first
+            then (tokbegin, String.length tokbegin)
+            else (tokmid, String.length tokmid)
+          in
+            if first_line = ""
+            then tok ^ sep ^ rest
+            else begin
+              assert (has_first_n_spaces (len + 1) first_line);
+              (String.blit_copy
+                 ~src:tok ~src_pos:0
+                 ~dst:first_line ~dst_pos:0
+                 ~len
+              ) ^ sep ^ rest
+            end
+        in
+        res ::
+        (match t with
+         | h' :: t' -> inner false h' t'
+         | [] -> [tokend ^ "\n"]
+        )
+      in
+        String.concat "\n" & inner true h t
+
 
 module Tuple
  =
   struct
-    let check_arity ~fn args =
-      if List.length args > 1
+    let check_arity ?(one=false) ~fn args =
+      if List.length args > (if one then 0 else 1)
       then ()
       else
         invalid_arg
-          "Codegen.Tuple.%s: must have more than one type argument" fn
+          "Codegen.Tuple.%s: must have %s one type argument" fn
+          (if one then "at least" else "more than")
 
-    let constr args =
-      check_arity args ~fn:"constr";
-      "(" ^ String.concat ", " args ^ ")"
+    let constr ?(one=false) ?(newlines = false) args =
+      check_arity ~one args ~fn:"constr";
+      if newlines
+      then
+        format_multiline ~tokbegin:"(" ~tokmid:"," ~tokend:")" args
+      else
+        "(" ^ String.concat ", " args ^ ")"
 
     let typedef type_name args =
       check_lid ~place:"Codegen.Tuple.typedef" type_name;
@@ -134,14 +219,15 @@ module Tuple
 module Sum
  =
   struct
-    let constr constr_name args =
-      check_uid ~place:"Codegen.Sum.constr" constr_name;
+
+    (* extended to poly variants *)
+    let constr ?(newlines=false) constr_name args =
+      check_sum_constr ~place:"Codegen.Sum.constr" constr_name;
       sprintf "%s%s"
         constr_name
         (match args with
          | [] -> ""
-         | a :: [] -> " " ^ a
-         | _ -> " " ^ Tuple.constr args
+         | _ -> " " ^ Tuple.constr ~newlines ~one:true args
         )
 
     let typedef_constr (cname, ctypes) =
@@ -159,9 +245,6 @@ module Sum
         List.map (typedef_constr @> sprintf "| %s\n") constrs
 
   end
-
-let string_index_opt s c =
-  try Some (String.index s c) with Not_found -> None
 
 module Typ
  =
@@ -188,19 +271,6 @@ module Typ
   end
 
 
-let format_mids ~when_0 ~when_1 ~first ~mid ~last lst =
-  match lst with
-  | [] -> when_0 ()
-  | h :: [] -> when_1 h
-  | h :: (m :: t) ->
-      first h;
-      let rec inner h t =
-        match t with
-        | h' :: t' -> mid h; inner h' t'
-        | [] -> last h
-      in
-        inner m t
-
 
 module Expr
  =
@@ -224,10 +294,17 @@ module Expr
              if arg = ""
              then invalid_arg "Expr.call: empty argument"
              else
-               if arg.[0] = '~' || arg.[0] = '?'
+               if arg.[0] = '~' || arg.[0] = '?' || arg = "()"
                then arg
              else
-               sprintf "(%s)" arg
+               if newlines
+               then
+                 match String.split_exact ((=) '\n') arg with
+                 | [] -> assert false
+                 | [oneline] -> sprintf "(%s)" oneline
+                 | lines -> format_multiline
+                     ~tokbegin:"(" ~tokend:")" ~tokmid:"" lines
+               else sprintf "(%s)" arg
           ) args
       in
       if newlines
@@ -295,6 +372,13 @@ module Expr
     let for_ var_ from_ to_ body_seq =
       sprintf "for %s = %s to %s do\n%s\ndone"
         (lid var_) from_ to_ (indent 2 & String.concat ";\n" body_seq)
+
+    let if_ cond th el =
+      sprintf "if (%s)\nthen begin\n%s\nend else begin\n%s\nend\n"
+        cond
+        (indent 2 th)
+        (indent 2 el)
+
   end
 
 module Struc
@@ -313,16 +397,28 @@ module Struc
       sprintf "let %s%s =\n%s\n"
         name opt_ty body
 
-    let func ?ret_ty name args body =
+    let func ?(arg_per_line=false) ?ret_ty name args body =
       check_lid ~place:"Codegen.Struc.func" name;
-      sprintf "let %s %s%s =\n%s\n"
-        name
-        (String.concat " " args)
-        (match ret_ty with
-         | None -> ""
-         | Some t -> " : " ^ t
-        )
-        (indent 2 body)
+      let ret_ty_txt =
+        match ret_ty with
+        | None -> ""
+        | Some t -> " : " ^ t ^ (if arg_per_line then "\n" else "")
+      in
+      if arg_per_line
+      then
+        sprintf "let %s\n%s%s  =\n%s\n"
+          name
+          (String.concat "" &
+           List.map (fun a -> "  " ^ a ^ "\n") args
+          )
+          ret_ty_txt
+          (indent 4 body)
+      else
+        sprintf "let %s %s%s =\n%s\n"
+          name
+          (String.concat " " args)
+          ret_ty_txt
+          (indent 2 body)
 
     let items body_items =
       String.concat "" &
@@ -330,7 +426,7 @@ module Struc
 
     let module_ name body_items =
       check_uid ~place:"Codegen.Struc.module_" name;
-      sprintf "module %s = struct\n%send"
+      sprintf "module %s = struct\n%send\n"
         name
         (indent 2 &
          items body_items
@@ -365,10 +461,25 @@ module Arr
   struct
     let get arr_expr index =
       sprintf "%s.(%s)" arr_expr index
+
+    let constr ?(newlines=false) elements =
+      if newlines
+      then
+        format_multiline ~tokbegin:"[|" ~tokmid:" ;" ~tokend:" |]" elements
+      else
+        sprintf "[| %s |]" &
+        String.concat " ; " elements
   end
 
 let uid ?(place="Codegen.uid") n =
   check_uid ~place n; n
+
+let method_ ?(pvt=false) name args body =
+  sprintf "method%s %s %s =\n%s\n"
+    (if pvt then " private" else "")
+    name
+    (String.concat " " args)
+    (indent 2 body)
 
 let line_directive fname lineno =
   sprintf "# %i %S\n" lineno fname

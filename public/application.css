@@ -1,0 +1,17 @@
+.form-field-error
+  {
+  border: 1px;
+  border-style: solid;
+  border-color: red;
+  }
+
+.form-control
+  {
+  margin-bottom: 1em;
+  }
+
+.products_list__image
+  {
+  max-width: 5em;
+  max-height: 5em;
+  }

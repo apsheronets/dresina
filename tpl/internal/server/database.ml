@@ -147,14 +147,50 @@ let check_schema_version () =
   | EQ -> ()
 
 
-(* returns Postgresql.result with data returned by [sql] query.
-   monadic function.
- *)
-let pg_query_result sql : Postgresql.result Lwt.t =
+exception Error of string
+
+let with_pg_result ~params sql f =
   with_connection & fun conn ->
-  let d = Dbi_pg.expect_result_data & conn#execute sql in
-  let no () = failwith
-    "Database.pg_query_result: only postgresql is supported now" in
-  try d#downcast; no () with
-  | Pg_result_data r -> r
-  | _ -> no ()
+  try conn#downcast; assert false with
+  | Pg_connection pcon ->
+      let pres = pcon#exec ~params sql in
+      f pres
+  | _ -> failwith
+    "Database: only postgresql is supported now"
+
+let pg_unexpected_status exp got =
+  raise &
+  Error ("expected " ^ exp ^ " result, got " ^ got ^ " result")
+
+(* returns Postgresql.result with data returned by [sql] query
+   in lwt monad.
+ *)
+let pg_query_result ?(params=[| |]) sql : Postgresql.result Lwt.t =
+  with_pg_result ~params sql & fun pres ->
+  match pres#status with
+  | Postgresql.Tuples_ok -> pres
+  | Postgresql.Command_ok -> pg_unexpected_status "data" "command"
+  | Postgresql.Copy_in -> pg_unexpected_status "data" "Copy_in"
+  | Postgresql.Copy_out -> pg_unexpected_status "data" "Copy_out"
+  | Postgresql.Fatal_error | Postgresql.Nonfatal_error -> raise &
+      Error pres#error
+      (* todo: close connection on fatal error *)
+  | Postgresql.Empty_query -> raise & Error "empty query"
+  | Postgresql.Bad_response -> raise & Error "bad response"
+
+
+(* returns lwt unit for [sql] command with [params] when it is executed ok.
+   warning: copypaste!
+ *)
+let pg_command_ok ?(params = [| |]) sql =
+  with_pg_result ~params sql & fun pres ->
+  match pres#status with
+  | Postgresql.Command_ok -> ()
+  | Postgresql.Tuples_ok -> pg_unexpected_status "command" "data"
+  | Postgresql.Copy_in -> pg_unexpected_status "command" "Copy_in"
+  | Postgresql.Copy_out -> pg_unexpected_status "command" "Copy_out"
+  | Postgresql.Fatal_error | Postgresql.Nonfatal_error -> raise &
+      Error pres#error
+      (* todo: close connection on fatal error *)
+  | Postgresql.Empty_query -> raise & Error "empty query"
+  | Postgresql.Bad_response -> raise & Error "bad response"

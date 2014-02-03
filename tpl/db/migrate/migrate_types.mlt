@@ -1,5 +1,11 @@
 exception Db_of_string of (string * string)
 
+let () = Printexc.register_printer
+  (function
+   | Db_of_string (x, y) -> Some (Printf.sprintf "Db_of_string %S %S" x y)
+   | _ -> None
+  )
+
 % sum_type column_type_modifier
   % sum_constr Ctm_none
   % sum_constr Ctm_decimal

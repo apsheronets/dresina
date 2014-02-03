@@ -30,10 +30,10 @@ type column_def_checked =
   ; cdc_type_mod : column_type_modifier
   }
 
-module Opt_list_cdc_tm = Tagged_marshal.Make(
+module Opt_string_and_list_cdc_tm = Tagged_marshal.Make(
    struct
-     type t = column_def_checked list option
-     let tag = "opt_list_cdc" ^ tag
+     type t = (string * column_def_checked list) option
+     let tag = "opt_string_and_list_cdc" ^ tag
    end
   )
 
