@@ -26,7 +26,7 @@ and loop acc = parse
 | '@' (ident as i)
   (space*
      ':' space*
-     (("option" as opt) space*)?
+     (("option" as opt) space+)?
      (ident as t)
   )?
   (space* as s)
