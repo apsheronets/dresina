@@ -62,7 +62,7 @@ let edit_with formdata =
 
 let edit ~id () =
   Product.Single.load ~id () >>= fun p ->
-  edit_with & Product.Single.to_form & `Instance p
+  edit_with & p#to_form ()
 
 let update ~id () =
   Product.Single.load ~id () >>= fun p ->
