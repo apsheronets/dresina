@@ -501,3 +501,68 @@ let strip_line_directive txt =
       in
         rest
     else txt
+
+(* utility functions for mlt processing *)
+module Mlt
+ =
+  struct
+
+    type mlt_val =
+      [ `Str of string
+      | `List of (mlt_val list)
+      ]
+
+    let expect_string place (v : mlt_val) =
+      match v with
+      | `Str x -> x
+      | `List _ -> failwith "argument %s must be string, not a list" place
+
+    let expect_string_opt place (v : mlt_val option) =
+      match v with
+      | None -> None
+      | Some x -> Some (expect_string place x)
+
+    let string_args1 f a ctx =
+      f
+        (expect_string "no.1" a)
+        ctx
+
+    let string_args2 f a b ctx =
+      f
+        (expect_string "no.1" a)
+        (expect_string "no.2" b)
+        ctx
+
+    let string_args3 f a b c ctx =
+      f
+        (expect_string "no.1" a)
+        (expect_string "no.2" b)
+        (expect_string "no.3" c)
+        ctx
+
+    let string_args4 f a b c d ctx =
+      f
+        (expect_string "no.1" a)
+        (expect_string "no.2" b)
+        (expect_string "no.3" c)
+        (expect_string "no.4" d)
+        ctx
+
+    let string_args5 f a b c d e ctx =
+      f
+        (expect_string "no.1" a)
+        (expect_string "no.2" b)
+        (expect_string "no.3" c)
+        (expect_string "no.4" d)
+        (expect_string "no.5" e)
+        ctx
+
+    let bool_of_string ~place = function
+    | "true" -> true
+    | "false" -> false
+    | str -> failwith "%s expected to be \"true\" or \"false\", not \"%s\""
+        place str
+
+
+
+  end

@@ -13,9 +13,12 @@ open Cd_All
 open Strings.Latin1
 open Schema_types
 module Cg = Codegen
+open Mlt
+
 let sprintf = Printf.sprintf
 let hashtbl_find_opt k h =
   try Some (Hashtbl.find h k) with Not_found -> None
+
 
 let gather f = fun a ->
   match stage with
@@ -35,7 +38,7 @@ type context =
 let schema = lazy
   (Schema_tm.from_file (Filename.concat "proj-build" schema_bin_fname))
 
-let table1 tname = gather & fun ctx ->
+let table1 = string_args1 & fun tname -> gather & fun ctx ->
   match ctx.cols with
   | Some _ -> failwith "duplicate 'table' directive"
   | None ->
@@ -799,13 +802,9 @@ let generate_fetcher_simple ~qname ~body ~single ~ctx =
 
 (********************************************************************)
 
-let bool_of_string ~place = function
-| "true" -> true
-| "false" -> false
-| str -> failwith "%s expected to be \"true\" or \"false\", not \"%s\""
-    place str
-
 let data1b qname ?single body = code & fun ctx ->
+  let qname = expect_string "dataset name" qname
+  and single = expect_string_opt "~single" single in
   let body = Cg.strip_line_directive body in
   let single =
     match single with

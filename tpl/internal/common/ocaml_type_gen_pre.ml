@@ -136,11 +136,13 @@ let finish ctx =
 
 let flush0 = finish
 
-let record_type1 rname ctx =
+open Mlt
+
+let record_type1 = string_args1 & fun rname ctx ->
   finish ctx;
   ctx.cur_type <- Some (Record_type (rname, []))
 
-let field2 fname ftype ctx =
+let field2 = string_args2 & fun fname ftype ctx ->
   match ctx.cur_type with
   | None | Some (Sum_type _) | Some (Alias _) ->
       failwith "field definition must be in record definition only"
@@ -148,7 +150,7 @@ let field2 fname ftype ctx =
       let fields = fields @ [ { f_name = fname ; f_type = ftype } ] in
       ctx.cur_type <- Some (Record_type (rname, fields))
 
-let sum_type1 sname ctx =
+let sum_type1 = string_args1 & fun sname ctx ->
   finish ctx;
   ctx.cur_type <- Some (Sum_type (sname, []))
 
@@ -162,7 +164,7 @@ let cur_sum_type ctx =
 let sum_add_constr cname st =
   st @ [ { c_name = cname ; c_arg_types = [] } ]
 
-let sum_constr1 cname ctx =
+let sum_constr1 = string_args1 & fun cname ctx ->
   let (sname, st) = cur_sum_type ctx in
   let st = sum_add_constr cname st in
   ctx.cur_type <- Some (Sum_type (sname, st))
@@ -179,12 +181,12 @@ let sum_add_arg atype st =
       in
         loop st
 
-let sum_arg1 atype ctx =
+let sum_arg1 = string_args1 & fun atype ctx ->
   let (sname, st) = cur_sum_type ctx in
   let st = sum_add_arg atype st in
   ctx.cur_type <- Some (Sum_type (sname, st))
 
-let alias2 newname oldname ctx =
+let alias2 = string_args2 & fun newname oldname ctx ->
   finish ctx;
   check_lid ~place:"type_gen/alias/oldname" oldname;
   check_lid ~place:"type_gen/alias/newname" newname;

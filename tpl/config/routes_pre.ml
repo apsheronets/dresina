@@ -137,5 +137,6 @@ let handler meth uri_patt_str cntr_name cntr_meth context =
         in
         context := add_handler !context meth mpath action
           
-let get3 = handler `GET
-let post3 = handler `POST
+open Mlt
+let get3 = string_args3 & handler `GET
+let post3 = string_args3 & handler `POST

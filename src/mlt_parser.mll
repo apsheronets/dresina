@@ -31,7 +31,7 @@ let code_of_directive dirtype dir args =
     let args_code = List.map
       (function
        | `Pos code | `Body code -> code
-       | `Lab (label, code) -> "~" ^ label ^ ":" ^ code
+       | `Lab (label, code) -> "~" ^ label ^ ":(" ^ code ^ ")"
       )
       args
     in
@@ -48,6 +48,7 @@ let dir_code fname lineno code =
       ^ "\n)"
     ]
 
+let ret_string str = Some (Cg.Sum.constr "`Str" [Cg.Lit.string str])
 }
 
 
@@ -226,13 +227,13 @@ and dir_arg_no_label fname lineno = parse
 
 | ((unquoted_string_char_no_tilde unquoted_string_char*) as str) space*
     {
-      Some (Cg.Lit.string str)
+      ret_string str
     }
 
 | '"'
     {
       let str = quoted_string fname lineno lexbuf in
-      Some (Cg.Lit.string str)
+      ret_string str
     }
 
 | '[' space*

@@ -1,6 +1,9 @@
 type context = string option ref
 
-let connection1b db_kind body ctx =
+open Cd_All
+open Mlt
+
+let connection1b = string_args1 & fun db_kind body ctx ->
   if db_kind <> "pg"
   then failwith "only 'pg' (postgresql) is supported now"
   else

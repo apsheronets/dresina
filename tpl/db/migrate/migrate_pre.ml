@@ -2,6 +2,7 @@
 open Cd_All
 open Strings.Latin1
 open Printf
+open Mlt
 
 (* TODO: проверять имена таблиц/столбцов на отсутствие кавычек тут. *)
 
@@ -43,7 +44,7 @@ let finish_table_if_any ctx =
         ctx.migration;
       ctx.creating_table <- None
 
-let create_table1 table_name ctx =
+let create_table1 = string_args1 & fun table_name ctx ->
   finish_table_if_any ctx;
   ctx.creating_table <- Some (table_name, Queue.create (), directive_loc ())
 
@@ -92,18 +93,28 @@ let get_ctm ?precision ?scale ctype =
 
 let column3 cname ctype cnullable ?precision ?scale =
   in_table & fun _tname cols_q _loc ->
+    let precision = expect_string_opt "~precision" precision
+    and scale = expect_string_opt "~scale" scale
+    and cname = expect_string "cname" cname
+    and ctype = expect_string "ctype" ctype
+    and cnullable = expect_string "cnullable" cnullable in
     let ctm = get_ctm ?precision ?scale ctype in
     Queue.push (column_def ~cname ~ctype ~cnullable ~ckind:Ck_attr ~ctm) cols_q
 
-let reference3 cname tname cnullable = in_table & fun _tname cols_q _loc ->
+let default_ref_col ~reftable = reftable ^ "_id"
+
+let reference cname tname cnullable =
+  in_table & fun _tname cols_q _loc ->
   Queue.push
     (column_def ~cname ~ctype:"ref" ~cnullable
        ~ckind:(Ck_fk tname) ~ctm:Ctm_none
     )
     cols_q
 
-let reference2 tname cnullable ctx =
-  reference3 (tname ^ "_id") tname cnullable ctx
+let reference3 = string_args3 reference
+
+let reference2 = string_args2 & fun reftable cnullable ctx ->
+  reference (default_ref_col ~reftable) reftable cnullable ctx
 
 (***********)
 
@@ -113,12 +124,20 @@ let common v = fun ctx ->
 
 let common_spec v = common (Mi_special v)
 
-let add_column4 tname cname ctype cnullable ?precision ?scale = common_spec &
+let add_column4 tname cname ctype cnullable ?precision ?scale =
+  let tname = expect_string "table name" tname
+  and cname = expect_string "column name" cname
+  and ctype = expect_string "column type" ctype
+  and cnullable = expect_string "nullability" cnullable
+  and precision = expect_string_opt "~precision" precision
+  and scale = expect_string_opt "~scale" scale in
+  common_spec &
   let ctm = get_ctm ?precision ?scale ctype in
   Add_column
     (tname, (column_def ~cname ~ctype ~cnullable ~ckind:Ck_attr ~ctm))
 
-let add_reference4 tname refcolumn reftable cnullable = common_spec &
+let add_reference tname refcolumn reftable cnullable =
+  common_spec &
   Add_column
     ( tname
     , (column_def ~cname:refcolumn ~ctype:"ref" ~cnullable
@@ -126,8 +145,10 @@ let add_reference4 tname refcolumn reftable cnullable = common_spec &
       )
     )
 
-let add_reference3 tname reftable cnullable =
-  add_reference4 tname (reftable ^ "_id") reftable cnullable
+let add_reference4 = string_args4 add_reference
+
+let add_reference3 = string_args3 & fun tname reftable cnullable ->
+  add_reference tname (default_ref_col ~reftable) reftable cnullable
 
 let column_ref ~tname ~cname ~ckind =
   { cr_table = tname
@@ -135,25 +156,39 @@ let column_ref ~tname ~cname ~ckind =
   ; cr_kind = ckind
   }
 
-let drop_column2 tname cname = common_spec &
+let drop_column2 = string_args2 & fun tname cname ->
+  common_spec &
   Drop_column (column_ref ~tname ~cname ~ckind:Ck_attr)
 
-let drop_reference3 tname refcolumn reftable = common_spec &
+let drop_reference tname refcolumn reftable = common_spec &
   Drop_column (column_ref ~tname ~cname:refcolumn ~ckind:(Ck_fk reftable))
 
-let drop_reference2 tname reftable ctx =
-  drop_reference3 tname (reftable ^ "_id") reftable ctx
+let drop_reference3 =
+  string_args3 drop_reference
 
-let create_index2 tname index_expr = common_spec &
+let drop_reference2 = string_args2 & fun tname reftable ctx ->
+  drop_reference tname (default_ref_col ~reftable) reftable ctx
+
+let create_index2 = string_args2 & fun tname index_expr ->
+  common_spec &
   Create_index (tname, index_expr)
 
-let drop_index2 tname index_expr = common_spec &
+let drop_index2 = string_args2 & fun tname index_expr ->
+  common_spec &
   Drop_index (tname, index_expr)
 
-let rename_table2 toldname tnewname = common_spec &
+let rename_table2 = string_args2 & fun toldname tnewname ->
+  common_spec &
   Rename_table (toldname, tnewname)
 
-let modify_column3 tname cname modif ?precision ?scale = common_spec &
+let modify_column3 tname cname modif ?precision ?scale =
+  let tname = expect_string "table name" tname
+  and cname = expect_string "column name" cname
+  and modif = expect_string "modification" modif
+  and precision = expect_string_opt "~precision" precision
+  and scale = expect_string_opt "~scale" scale
+  in
+  common_spec &
   let cm =
     match modif with
     | "null" -> Cm_set_nullable true
@@ -164,7 +199,7 @@ let modify_column3 tname cname modif ?precision ?scale = common_spec &
   in
     Modify_column ((column_ref ~tname ~cname ~ckind:Ck_attr), cm)
 
-let modify_reference4 tname refcolumn reftable modif = common_spec &
+let modify_reference tname refcolumn reftable modif = common_spec &
   let cm =
     match modif with
     | "null" -> Cm_set_nullable true
@@ -177,18 +212,22 @@ let modify_reference4 tname refcolumn reftable modif = common_spec &
       , cm
       )
 
-let modify_reference3 tname reftable modif ctx =
-  modify_reference4 tname (reftable ^ "_id") reftable modif ctx
+let modify_reference4 = string_args4 modify_reference
 
-let rename_column3 tname cname cnewname = common_spec &
+let modify_reference3 = string_args3 & fun tname reftable modif ctx ->
+  modify_reference tname (default_ref_col ~reftable) reftable modif ctx
+
+let rename_column3 = string_args3 & fun tname cname cnewname -> common_spec &
   Rename_column ((column_ref ~tname ~cname ~ckind:Ck_attr), cnewname)
 
-let rename_reference4 tname refcolumn reftable cnewname = common_spec &
+let rename_reference tname refcolumn reftable cnewname = common_spec &
   Rename_column
     ((column_ref ~tname ~cname:refcolumn ~ckind:(Ck_fk reftable)), cnewname)
 
-let rename_reference3 tname reftable newcolumn ctx =
-  rename_reference4 tname (reftable ^ "_id") reftable newcolumn ctx
+let rename_reference4 = string_args4 rename_reference
+
+let rename_reference3 = string_args3 & fun tname reftable newcolumn ctx ->
+  rename_reference tname (default_ref_col ~reftable) reftable newcolumn ctx
 
 let mig_sql dir body ctx = (common &
   Mi_generic (dir, Ema_sql (strip_line_directive body))
@@ -206,27 +245,27 @@ let down_ocaml0b body ctx = common (
   let funcno = register_ocaml_migration body ctx in
   Mi_generic (Md_down, Ema_ocaml funcno)) ctx
 
-let drop_table1 tname = common_spec &
+let drop_table1 = string_args1 & fun tname -> common_spec &
   Drop_table tname
 
 (************************************************)
 
-let create_type2 ty_name ml_type = common_spec &
+let create_type2 = string_args2 & fun ty_name ml_type -> common_spec &
   let () = Codegen.check_lid ~place:"type name" ty_name in
   Create_type (ty_name, ml_type)
 
-let pg_of_string1b ty b = common_spec &
+let pg_of_string1b = string_args1 & fun ty b -> common_spec &
   Pg_of_string (ty, b)
 
-let pg_to_string1b ty b = common_spec &
+let pg_to_string1b = string_args1 & fun ty b -> common_spec &
   Pg_to_string (ty, b)
 
-let pg_ddl2 ty ddl = common_spec &
+let pg_ddl2 = string_args2 & fun ty ddl -> common_spec &
   Pg_ddl (ty, "function _ -> " ^ Codegen.Lit.string ddl)
 
-let pg_ddl1b ty body = common_spec &
+let pg_ddl1b = string_args1 & fun ty body -> common_spec &
   Pg_ddl (ty, body)
 
-let inherit_type2 ty_child ty_base = common_spec &
+let inherit_type2 = string_args2 & fun ty_child ty_base -> common_spec &
   let () = Codegen.check_lid ~place:"type name" ty_child in
   Inherit_type (ty_child, ty_base)
