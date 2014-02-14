@@ -59,7 +59,7 @@ end
 
 let from_stored_model proj model_name =
   match model_desc model_name with
-  | None -> failwith "Model have no description (%%table missed?)"
+  | None -> failwith "Model have no description (%%table missing?)"
   | Some s -> proj s
 
 let model_cols = from_stored_model snd
