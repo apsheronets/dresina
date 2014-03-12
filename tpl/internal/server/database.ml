@@ -153,6 +153,17 @@ let with_pg_result ~params sql f =
   with_connection & fun conn ->
   try conn#downcast; assert false with
   | Pg_connection pcon ->
+      let () = Printf.eprintf "SQL: %s [params: %s]\n%!"
+        sql
+        (if params = [| |]
+         then "none"
+         else
+           params
+           |> Array.map
+                (Strings.Utf8.String.escaped @> Printf.sprintf "\"%s\"")
+           |> String.concat_array ", "
+        )
+      in
       let pres = pcon#exec ~params sql in
       f pres
   | _ -> failwith

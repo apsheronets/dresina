@@ -366,7 +366,7 @@ module Expr
       | [] -> invalid_arg "Codegen.Expr.seq: empty sequence"
       | e :: [] -> e
       | _ ->
-          sprintf "begin\n%s\nend"
+          sprintf "begin\n%s\nend\n"
             (indent 2 & String.concat ";\n" expr_list)
 
     let for_ var_ from_ to_ body_seq =
@@ -563,6 +563,27 @@ module Mlt
     | str -> failwith "%s expected to be \"true\" or \"false\", not \"%s\""
         place str
 
-
-
   end
+
+let syms_generated = Hashtbl.create 7
+exception Sym of string
+
+let gensym base =
+  try
+    let check suf =
+      let s = base ^ suf in
+      if Hashtbl.mem syms_generated s
+      then ()
+      else begin
+        Hashtbl.add syms_generated s ();
+        raise (Sym s)
+      end
+    in
+    check "";
+    let rec loop i =
+      let suf = string_of_int i in
+      check suf;
+      loop (i + 1)
+    in
+      loop 2
+  with Sym s -> s

@@ -9,10 +9,19 @@ let of_opt_exn place = function
 exception Form_field_not_found of string
 
 type model_validation_place =
-| Mvp_model of string
-| Mvp_field of string (* model *) * string (* field *)
+| Mvp_model of string (* model *)
+| Mvp_field of string (* model *)
+             * string (* field *)
 
 exception Model_validation of ((model_validation_place * exn) list)
+
+let store_validation_error mvp errors e =
+  let new_errors =
+    match e with
+    | Model_validation errs -> errs
+    | err -> [(mvp, err)]
+  in
+  errors := !errors @ new_errors
 
 let catch_to_res_mvp model_name f =
   catch
@@ -36,6 +45,13 @@ let form_add_error errors (mvp : model_validation_place) e =
   errors := (mvp, e) :: !errors;
   None
 
+let is_whitespace = function
+  | ' ' | '\t' | '\r' | '\n' -> true
+  | _ -> false
+
+let trim_ws str =
+  (* no need to trim with utf8-functions, since trimming 1-byte characters *)
+  Strings.Latin1.String.trim is_whitespace str
 
 (* returns:
    - None -- type error (it's stored in [errors])
@@ -52,6 +68,8 @@ let update_from_form_field_or_store_error
     Some begin match strmap_find_opt k map with
     | None -> None
     | Some str ->
+        (* place for no-trim here *)
+        let str = trim_ws str in
         add_to_paramsl paramsl k str;
         Some (f str)
     end
@@ -72,6 +90,8 @@ let update_from_form_field_opt_or_store_error
     Some begin match strmap_find_opt k map with
     | None -> None
     | Some str ->
+        (* place for no-trim here *)
+        let str = trim_ws str in
         Some begin
           add_to_paramsl paramsl k str;
           if str = ""

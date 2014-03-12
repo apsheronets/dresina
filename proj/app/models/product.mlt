@@ -1,5 +1,17 @@
 % table products
 
+% validate "float_greater_than 0." price
+
+% validate not_blank [title description]
+
+% begin validate [title description]
+    match title, description with
+    | ".", "." -> ()
+    | ".", _ | _, "." ->
+        failwith "test composite validation failed"
+    | _, _ -> ()
+% end
+
 (* без указаний -- из базовой таблицы в модель: *)
 % begin data all
     from products

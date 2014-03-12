@@ -1,15 +1,7 @@
-(* todo
-разобраться, в каких случаях можно
-1. создать инстанс (очевидно, когда insertable -- в выборке
-   есть все обязательные поля)
-2. менять конкретные поля (в cdc впилить таки cdc_upd, которое считать
-   при разборе того, какие поля дают модели из запросов)
-3. удалять инстанс ( = должно быть id), и поправить [to_]delete методы
-   на этот случай.
-*)
-
+(* [to_]delete must be generated only when id present *)
 
 open Cd_All
+open Cdt
 open Strings.Latin1
 open Schema_types
 module Cg = Codegen
@@ -18,6 +10,7 @@ open Mlt
 let sprintf = Printf.sprintf
 let hashtbl_find_opt k h =
   try Some (Hashtbl.find h k) with Not_found -> None
+let ( !! ) = Lazy.force
 
 
 let gather f = fun a ->
@@ -67,6 +60,13 @@ let model_table = from_stored_model fst
 
 let self_model_name =
   Filename.chop_suffix (Filename.basename __mlt_filename) ".mlt"
+
+let check_self_attr a =
+  if List.exists
+       (fun cdc -> cdc.cdc_name = a)
+       (model_cols self_model_name)
+  then ()
+  else failwith "Attribute %S not found in the current schema" a
 
 let out_ctm = Memo.create ~eq:( = ) &
   let c = ref 0 in
@@ -124,7 +124,209 @@ let pg_of_data ~col ~colnum ~data ~row_ml =
 (********************************************************************)
 
 let () = code out
-  "open Proj_common\nopen Forms_internal\nopen Models_internal\n"
+  "open Proj_common\nopen Forms_internal\nopen Models_internal\n\
+   open Common_validations\n"
+
+(********************************************************************)
+
+let any_data_met = ref false
+
+let check_no_data_met () =
+  if !any_data_met
+  then failwith "Validations must be defined before datasets"
+  else ()
+
+let validations = Queue.create ()
+
+let vld_attrs mlt =
+  begin match mlt with
+  | `Str a -> [a]
+  | `List l ->
+      List.map
+        (function
+         | `Str a -> a
+         | `List _ -> failwith
+             "Validation attributes must be either string \
+              or list of strings argument"
+        )
+        l
+  end
+  |> fun a ->
+    begin
+      if a = []
+      then failwith "Validation must be applied to one or more attributes"
+      else a
+    end
+  |> fun a ->
+    begin
+      List.iter check_self_attr a;
+      a
+    end
+
+
+let out_validation_func attrs code =
+  let basename = "__validate_" ^ String.concat "_" attrs in
+  let name = gensym basename in
+  out & directive_linedir ();
+  out & Printf.sprintf
+    "let %s %s __errors : unit =\n\
+    \  try begin\n"
+    name (String.concat " " attrs);
+  out & directive_linedir ();
+  out code;
+  out & Cg.line_directive "_model_cogenerator_" 0;
+  out & Printf.sprintf
+    "  end with e -> store_validation_error (%s) __errors e"
+    (let ml_model = Cg.Lit.string self_model_name in
+     match attrs with
+     | [a] -> Cg.Sum.constr "Mvp_field" [ml_model; Cg.Lit.string a]
+     | _ -> Cg.Sum.constr "Mvp_model" [ml_model]
+    );
+  out "\n;;\n";
+  name
+
+let validate2 mlt_vld_func mlt_attrs = code & fun _ctx ->
+  check_no_data_met ();
+  let vld_func = expect_string "validation function" mlt_vld_func in
+  let attrs = vld_attrs mlt_attrs in
+  assert (attrs <> []);
+  List.iter
+    (fun attr ->
+       let attrs = [attr] in
+       let func_name = out_validation_func
+         attrs
+         (Cg.Expr.call_gen vld_func attrs)
+       in
+       Queue.push (attrs, func_name) validations
+    )
+    attrs
+
+let validate1b mlt_attrs body = code & fun _ctx ->
+  let attrs = vld_attrs mlt_attrs in
+  assert (attrs <> []);
+  let name = out_validation_func attrs body in
+  Queue.push (attrs, name) validations
+
+
+(* union-find *)
+module Uf
+ :
+  sig
+    type 'a t
+    val create : 'a -> 'a t
+    val union : 'a t -> 'a t -> unit
+    val find : 'a t -> 'a t
+    val get : 'a t -> 'a
+  end
+ =
+  struct
+
+    type 'a t =
+      { v : 'a
+      ; mutable up : 'a t
+      ; mutable rank : int
+      }
+
+    let get uf = uf.v
+
+    let create a =
+      let rec uf = { v = a ; up = uf ; rank = 0 } in
+      uf
+
+    let rec find uf =
+      if uf.up == uf
+      then uf
+      else begin
+        uf.up <- find uf.up;
+        uf.up
+      end
+
+    let union a b =
+      let ra = find a
+      and rb = find b in
+      if ra == rb
+      then ()
+      else
+        if ra.rank < rb.rank
+        then
+          ra.up <- rb
+        else if ra.rank > rb.rank
+        then
+          rb.up <- ra
+        else begin
+          rb.up <- ra;
+          ra.rank <- ra.rank + 1
+        end
+
+  end
+
+
+(* these maps contain "validation groups", by key (some attribute of the group,
+   it maps to list of attributes of this group), and by attribute (it maps to
+   the key of this attribute's group).
+ *)
+let (vld_by_key, vld_by_attr) =
+  let l = lazy begin
+    let open Cadastr in
+    let ti_uf_string = new tieq (Cdt.Simple "uf")
+      ~eq:(fun a b -> Uf.get a = Uf.get b) () in
+    let k2v = new Simp.map_rws_assoc ti_string
+    and v2k = new Simp.map_rws_assoc ti_uf_string in
+    let b = new Simp.bimap k2v v2k in
+    let inj a = b#replace a (lazy (Uf.create a)) in
+    Queue.iter
+      (fun (attrs, name) ->
+         Printf.printf "VLD: %S [%s]\n%!" name & String.concat " " attrs;
+         let a1 = List.hd attrs in
+         List.iter
+           (fun a2 -> Uf.union (inj a1) (inj a2)
+           )
+           attrs
+      )
+      validations;
+    let vld_by_key = new Simp.map_rws_assoc ti_string
+    and vld_by_attr = new Simp.map_rws_assoc ti_string in
+    b#iter
+      (fun attr ufa ->
+         let root = Uf.get (Uf.find ufa) in
+         vld_by_key#replace root (attr :: vld_by_key#get_def root []);
+         vld_by_attr#replace attr root
+      );
+    vld_by_key#iter
+      (fun root attrs ->
+         Printf.printf "VLD_GRP: %s = [%s]\n%!" root (String.concat " " attrs)
+      );
+    (vld_by_key, vld_by_attr)
+  end
+  in
+    (lazy (fst !!l), lazy (snd !!l))
+
+
+(********************************************************************)
+
+let queue_to_list q =
+  List.rev &
+  Queue.fold (fun acc x -> x :: acc) [] q
+
+let if_'__errors'_or_fail then_code =
+  Cg.Expr.if_ "!__errors = []"
+    (* then *)
+    then_code
+    (* else *)
+    begin
+      Cg.Expr.call_gen "Lwt.fail" & List.one &
+        Cg.Sum.constr "Model_validation" ["!__errors"]
+    end
+
+
+let generate_insert_validations () =
+  Cg.Expr.seq &
+  List.map
+    (fun (attrs, func_name) ->
+       Cg.Expr.call func_name (attrs @ ["__errors"])
+    ) &
+  queue_to_list &
+  validations
 
 let generate_insert tname cols =
   let q n = "\"" ^ n ^ "\"" in
@@ -161,9 +363,14 @@ let generate_insert tname cols =
       \  return_unit\n\
        )"
   in
-  Cg.Expr.if_ "id = 0L"
-    (gen false)
-    (gen true)
+  Cg.Expr.let_in "__errors" "ref []" &
+  Cg.Expr.seq
+    [ generate_insert_validations ()
+    ; if_'__errors'_or_fail &
+        Cg.Expr.if_ "id = 0L"
+          (gen false)
+          (gen true)
+    ]
 
 
 let generate_delete ~tname cols =
@@ -180,7 +387,7 @@ let generate_delete ~tname cols =
         (fun c ->
            let n = c.cdc_name in
            if n = "id"
-           then Some (pg_col_to_param c n)
+           then Some (pg_col_to_param c "initial_id")
            else None
         )
         cols
@@ -202,29 +409,39 @@ let col_ml_type c =
   let t = t_ml_type c.cdc_type in
   if c.cdc_nullable then "(" ^ t ^ ") option" else t
 
-let instance_attr c ~ind ml_val =
+let instance_attr c ~upd_ind_opt ml_val =
   let n = c.cdc_name in
+  begin
+    if n = "id"
+    then "val mutable initial_id = id\n"
+    else ""
+  end
+  ^
   sprintf
-     "val mutable %s : %s = %s\n\
+     "val %s %s : %s = %s\n\
       method %s = %s\n"
-     n (col_ml_type c) ml_val
+     (if upd_ind_opt = None then "" else "mutable") n (col_ml_type c) ml_val
      n n
   ^
-  if true (* todo *)
-  then
-    Cg.method_ ("set_" ^ n) ["__x"] &
-      Cg.Expr.seq
-        [ n ^ " <- __x"
-        ; Cg.Expr.call_gen "BitArray.set"
-            [ "__modified_columns"
-            ; Cg.Lit.int ind
-            ; Cg.Lit.bool true
-            ]
-        ]
-  else
-    ""
+  match upd_ind_opt with
+  | Some ind ->
+      Cg.method_ ("set_" ^ n) ["__x"] &
+        Cg.Expr.seq
+          [ n ^ " <- __x"
+          ; Cg.Expr.call_gen "BitArray.set"
+              [ "__modified_columns"
+              ; Cg.Lit.int ind
+              ; Cg.Lit.bool true
+              ]
+          ]
+  | None ->
+      ""
 
-
+(* creates let-in environment with attributes and bound values
+   got from forms or like.  [getval_prefix] rules how exactly form fields
+   are processed -- it's a prefix of common function, suffixes are
+   "_or_store_error" or "_opt_or_store_error" for mandatory/optional fields.
+ *)
 let from_form_env ~getval_prefix cols =
   "let __errors = ref [] in\n\
    let __out_form = ref (lazy StrMap.empty) in\n"
@@ -251,173 +468,203 @@ let from_form_env ~getval_prefix cols =
   )
 
 
-(* todoc: про частичные/полные update -- универсального решения
-   нет и не может быть.  в порядке убывания производительности
-   надо предоставить: 1. частичный update, 2. полный update,
-   3. select for update при загрузке данных из бд,
-   4. блокировку таблиц.  Каждое для своих случаев.
-   Чаще окажется так, что изменение только изменённых
-   столбцов -- самое то.
-   п.1,2,3 -- вполне можно через описание в модели.
+(* returns code packed in "OCaml sequence", which returns [unit]
+   and appends validation errors to [__errors] (it's in environment).
  *)
-(* todo: явно, изменение id не нужно.  надо вырезать set_id,
-   в том числе из set_attrs.  и сделать более общо: некоторые поля
-   должны быть неизменяемыми.  это в худшем случае описывать в
-   запросе, а в лучшем случае -- смотреть на имена столбцов,
-   которые запрашиваются (если явно "в модель такую-то -- столбцы
-   такие-то из подзапроса t1"), и, если столбца нет в столбцах
-   таблицы, то он неизменный.
-   протащить это в cdc, там по умолчанию cdc_upd = true.
- *)
-let generate_update tname cols =
-  Cg.Expr.let_in "__mc" "__modified_columns" &
-  Cg.Expr.if_ "BitArray.all_equal_to false __mc"
+let generate_update_validations vld_masks =
+  Cg.Expr.seq &
+  List.map
+    (fun (mask_name, func_name, attrs) ->
+       Cg.Expr.if_ ("BitArray.intersects __modified_columns " ^ mask_name)
+         (* then *)
+         (Cg.Expr.call func_name (attrs @ ["__errors"]))
+         (* else *)
+         "()"
+    )
+  vld_masks
+
+
+(* todo: update должен быть returning *)
+
+let generate_update ~vld_masks tname cols =
+  Cg.Expr.if_ "BitArray.all_equal_to false __modified_columns"
     "return ()"
     begin
-      Cg.Expr.let_in "__ug"
-        (Cg.Expr.call "ug_create"
-           [ Cg.Lit.string tname
-           ; "id"
-           ]
-        )
-      begin
-        Cg.Expr.seq
-          ( List.mapi
-              (fun ind c ->
-                 Cg.Expr.if_
-                   (sprintf "BitArray.get __mc %i" ind)
-                   (Cg.Expr.call ~newlines:true "ug_add"
-                      [ "__ug"
-                      ; Cg.Lit.string c.cdc_name
-                      ; pg_col_to_param c c.cdc_name
-                      ]
-                   )
-                   ("()")
+      Cg.Expr.let_in "__errors" "ref []" &
+      Cg.Expr.let_in "()" (generate_update_validations vld_masks) &
+      if_'__errors'_or_fail &
+        begin
+          Cg.Expr.let_in "__ug"
+            (Cg.Expr.call "ug_create"
+               [ Cg.Lit.string tname
+               ; "initial_id"
+               ]
+            )
+          begin
+            Cg.Expr.seq
+              ( List.mapi
+                  (fun ind c ->
+                     Cg.Expr.if_
+                       (sprintf "BitArray.get __modified_columns %i" ind)
+                       (Cg.Expr.call ~newlines:true "ug_add"
+                          [ "__ug"
+                          ; Cg.Lit.string c.cdc_name
+                          ; pg_col_to_param c c.cdc_name
+                          ]
+                       )
+                       ("()")
+                  )
+                  cols
+              @ [ "ug_exec __ug" ]
               )
-              cols
-          @ [ "ug_exec __ug" ]
-          )
-      end
-    end
+          end
+        end  (* when validation ok *)
+    end (* all_equal_to false *)
   ^
   ">>= fun () ->\n\
    BitArray.fill_all false __modified_columns;\n\
    __record_status <- Rs_saved;\n\
+   initial_id <- id;\n\
    return ()\n"
 
 
-let instance_modifications_pre ~rec_st_ml cols =
-  sprintf
-    "val mutable __record_status : record_status = (%s)\n" rec_st_ml
-  ^
-  sprintf
-    "val __modified_columns = BitArray.make %i false\n"
-      (List.length cols)
+(* user can create/insert only when [cols] contains:
+   - all mandatory attributes
+   - all attributes that require validation
+*)
+let can_insert cols =
+  let is_present attr = List.exists (fun c -> c.cdc_name = attr) cols in
+  (!!vld_by_attr)#for_all (fun attr _grp -> is_present attr)
+  &&
+  let notnull_attrs = List.map_filter
+    (fun c -> if c.cdc_nullable then None else Some c.cdc_name)
+    (model_cols self_model_name) in
+  List.for_all is_present notnull_attrs
 
-let instance_modifications_post ~tname cols =
-  begin
-    Cg.method_ ~pvt:true "__fill_returning" ["data"] &
+
+(* "BitArray.make %i false" (List.length cols) *)
+let instance_modifications_pre ~rec_st_ml ~upd_cols =
+  if upd_cols = []
+  then
+    ""
+  else begin
+    sprintf
+      "val mutable __record_status : record_status = (%s)\n" rec_st_ml
+    ^
+    sprintf
+      "val __modified_columns : BitArray.t = __mod_cols\n"
+  end
+
+
+let instance_modifications_post ~vld_masks ~tname ~upd_cols ~cols =
+  if upd_cols = []
+  then ""
+  else begin
+    begin
+      Cg.method_ ~pvt:true "__fill_returning" ["data"] &
+        Cg.Expr.seq &
+        List.mapi
+          (fun i col ->
+             col.cdc_name
+             ^ " <- "
+             ^ pg_of_data ~col ~colnum:i ~data:"data"
+                 ~row_ml:(Cg.Lit.int 0)
+          )
+          cols
+    end
+    ^
+    begin
+      Cg.method_ "save_exn" ["()"] &
+      Cg.Expr.match_ "__record_status"
+      [ ( "Rs_new"
+        , generate_insert tname cols
+        )
+      ; ( "Rs_db"
+        , generate_update ~vld_masks tname cols
+        )
+      ; ( "Rs_to_delete"
+        , generate_delete ~tname cols
+        )
+      ; ( "Rs_saved | Rs_deleted"
+        , "return_unit"
+        )
+      ]
+    end
+    ^
+    begin
+      Cg.method_ "save" ["()"] &
+      sprintf "Forms_internal.catch_to_res_mvp %S __self#save_exn"
+        self_model_name
+    end
+    ^
+    begin
+      Cg.method_ "to_delete" ["()"] &
+      Cg.Expr.match_ "__record_status"
+      [ ( "Rs_new"
+        , "__record_status <- Rs_deleted"
+        )
+      ; ( "Rs_db | Rs_saved"
+        , "__record_status <- Rs_to_delete"
+        )
+      ; ( "Rs_to_delete | Rs_deleted"
+        , "()"
+        )
+      ]
+    end
+    ^
+    begin
+      Cg.method_ "delete" ["()"]
+      "let () = __self#to_delete () in __self#save ()"
+    end
+    ^
+    begin
+      let col_args = List.map (fun c -> "?" ^ c.cdc_name) upd_cols in
+      Cg.method_ "set_attrs" (col_args @ ["()"]) &
       Cg.Expr.seq &
-      List.mapi
-        (fun i col ->
-           col.cdc_name
-           ^ " <- "
-           ^ pg_of_data ~col ~colnum:i ~data:"data"
-               ~row_ml:(Cg.Lit.int 0)
-        )
-        cols
-  end
-  ^
-  begin
-    Cg.method_ "save_exn" ["()"] &
-    Cg.Expr.match_ "__record_status"
-    [ ( "Rs_new"
-      , generate_insert tname cols
-      )
-    ; ( "Rs_db"
-      , generate_update tname cols
-      )
-    ; ( "Rs_to_delete"
-      , generate_delete ~tname cols
-      )
-    ; ( "Rs_saved | Rs_deleted"
-      , "return_unit"
-      )
-    ]
-  end
-  ^
-  begin
-    Cg.method_ "save" ["()"] &
-    sprintf "Forms_internal.catch_to_res_mvp %S __self#save_exn"
-      self_model_name
-  end
-  ^
-  begin
-    Cg.method_ "to_delete" ["()"] &
-    Cg.Expr.match_ "__record_status"
-    [ ( "Rs_new"
-      , "__record_status <- Rs_deleted"
-      )
-    ; ( "Rs_db | Rs_saved"
-      , "__record_status <- Rs_to_delete"
-      )
-    ; ( "Rs_to_delete | Rs_deleted"
-      , "()"
-      )
-    ]
-  end
-  ^
-  begin
-    Cg.method_ "delete" ["()"]
-    "let () = __self#to_delete () in __self#save ()"
-  end
-  ^
-  begin
-    let col_args = List.map (fun c -> "?" ^ c.cdc_name) cols in
-    Cg.method_ "set_attrs" (col_args @ ["()"]) &
-    Cg.Expr.seq &
-      List.map
-        (fun c ->
-           let n = c.cdc_name in
-           Cg.Expr.match_ n
-           [ ("None", "()")
-           ; ("Some x", sprintf "__self#set_%s x" n
-               (* потом, как с обновляемостью будет ясно, можно будет
-                  в прямые присваивания переделать. *)
-             )
-           ]
-        )
-        cols
-  end
-  ^
-  begin
-    Cg.method_ "update_from_form" ["__m"] begin
-      from_form_env ~getval_prefix:"update_from_form_field" cols
-      ^
-      Cg.Expr.call_gen ~newlines:true
-        "Forms_internal.update_or_create_form"
-        [ "!__errors"
-        ; Cg.Lit.string self_model_name
-        ; Cg.Expr.call ~newlines:true "lazy" & List.one &
-          Cg.Expr.seq
-            [ Cg.Expr.call_gen ~newlines:true "__self#set_attrs" &
-                (List.map
-                   (fun c ->
-                      let n = c.cdc_name in
-                      sprintf "?%s:(of_opt_exn %S __%s_opt)"
-                        n
-                        (sprintf "update %s.%s from form data"
-                           self_model_name n)
-                        n
-                   )
-                   cols
-                @ ["()"]
-                )
-            ; "__self"
-            ]
-        ; "to_form"
-        ; "(lazy __m)"
-        ]
+        List.map
+          (fun c ->
+             let n = c.cdc_name in
+             Cg.Expr.match_ n
+             [ ("None", "()")
+             ; ("Some x", sprintf "__self#set_%s x" n
+               )
+             ]
+          )
+          upd_cols
+    end
+    ^
+    begin
+      Cg.method_ "update_from_form" ["__m"] begin
+        from_form_env ~getval_prefix:"update_from_form_field" upd_cols
+        ^
+        Cg.Expr.call_gen ~newlines:true
+          "Forms_internal.update_or_create_form"
+          [ "!__errors"
+          ; Cg.Lit.string self_model_name
+          ; Cg.Expr.call ~newlines:true "lazy" & List.one &
+            Cg.Expr.seq
+              [ Cg.Expr.call_gen ~newlines:true "__self#set_attrs" &
+                  (List.map
+                     (fun c ->
+                        let n = c.cdc_name in
+                        sprintf "?%s:(of_opt_exn %S __%s_opt)"
+                          n
+                          (sprintf "update %s.%s from form data"
+                             self_model_name n)
+                          n
+                     )
+                     (List.filter
+                        (fun c -> c.cdc_name <> "id")
+                        upd_cols
+                     )
+                  @ ["()"]
+                  )
+              ; "__self"
+              ]
+          ; "to_form"
+          ; "(lazy __m)"
+          ]
+      end
     end
   end
 
@@ -517,38 +764,51 @@ let to_form cols =
     "let to_form ?exn arg = new to_form ?exn arg\n"
 
 
-let generate_create cols =
+let generate_internal_create ~ins ~vld_masks ~upd_cols cols =
   let tname = model_table self_model_name in
   let args_labelled = List.map (fun c -> "~" ^ c.cdc_name) cols in
-  let internal_args = ["~__record_status"] in
+  let internal_args =
+    [ "~__record_status"
+    ; sprintf "?(__mod_cols = BitArray.make %i false)"
+        (List.length upd_cols)
+    ]
+  in
   begin
-(*
-update тоже, кстати, returning.
-обновлено или нет -- смотреть при save сравнением столбцов "из бд" и
-значений из объекта.  Значения "из бд" можно прямо в строках хранить.
-*)
-    Cg.Struc.func ~arg_per_line:true "create_noopt"
+    Cg.Struc.func ~arg_per_line:true "__create_noopt"
       (internal_args @ args_labelled @ ["()"])
     begin
-      (* все ошибки валидации закатывать в
-         .. with e -> raise (Mvp_model "имямодели", e)
-       *)
+      begin
+        if ins
+        then ""
+        else "\
+          if __record_status = Rs_new\n\
+          then invalid_arg \"can't create new record\"\n\
+          else\n\
+          "
+      end
+      ^
       "object (__self)\n"
       ^
       instance_modifications_pre
         ~rec_st_ml:"__record_status"
-        cols
+        ~upd_cols
       ^
       Cg.indent 2 begin
         String.concat "\n" begin
-          List.mapi
-            (fun ind c -> instance_attr ~ind c c.cdc_name
+          List.map
+            (fun c ->
+               let upd_ind_opt =
+                 match List.findi_opt ( ( == ) c ) upd_cols with
+                 | None -> None
+                 | Some (_found_col, ind) -> Some ind
+               in
+               instance_attr ~upd_ind_opt c c.cdc_name
             )
             cols
         end
       end
       ^
-      instance_modifications_post ~tname cols
+      instance_modifications_post ~tname ~vld_masks ~upd_cols ~cols
       ^
       begin
         Cg.method_ "to_form" ["?exn"; "()"] &
@@ -565,10 +825,21 @@ update тоже, кстати, returning.
       cols
   in
   begin
-    Cg.Struc.func ~arg_per_line:true "create" (args_opt @ ["()"]) &
-    Cg.Expr.call ~newlines:true "create_noopt" (args_labelled @ ["()"])
+    Cg.Struc.func ~arg_per_line:true "__create" (args_opt @ ["()"]) &
+      Cg.Expr.call ~newlines:true "__create_noopt" (args_labelled @ ["()"])
   end
 
+
+(*
+create для юзера не нужен, если всех столбцов с валидацией нет.
+а для object_of_cols всегда нужен.
+поэтому:
+- __create[_noopt] будет всегда
+- в случае, если создание возможно, будет let create = __create.
+объект из object_of_cols должен уметь только такой save, который
+за изменение-удаление отвечает.
+*)
+  
 
 (* assuming "data : Postgresql.result; row : int" in environment *)
 let object_of_cols cols_inds =
@@ -585,7 +856,7 @@ let object_of_cols cols_inds =
      ; "()"
      ]
   in
-  Cg.Expr.call ~newlines:true "create_noopt" create_args
+  Cg.Expr.call ~newlines:true "__create_noopt" create_args
 
 
 (* assuming "data : Postgresql.result" in environment,
@@ -713,7 +984,10 @@ let prepare_sql body =
    чтобы можно было из мапки заполнять поля объекта своими способами.
 *)
 
-let from_form cols =
+(* for object created from form data, all attributes except [id]
+   are marked as updated.
+*)
+let from_form ~cols ~upd_cols =
   let self_id_k = self_model_name ^ ".id" in
   Cg.Struc.func "from_form" ["__m"] begin
     sprintf
@@ -731,9 +1005,19 @@ let from_form cols =
         (* а вот и нет (в общем случае).
            create_noopt не знает про подмодели.
          *)
-        Cg.Expr.call ~newlines:true "create_noopt" &
-          ( "~__record_status:\
-              (match __id_opt with None | Some 0L -> Rs_new | _ -> Rs_db)"
+        Cg.Expr.call ~newlines:true "__create_noopt" &
+          (
+          "~__record_status:\
+            (match __id_opt with None | Some 0L -> Rs_new | _ -> Rs_db)"
+          ::
+          begin
+            let mask = BitArray.make (List.length upd_cols) true in
+            let id_ind = snd &
+              List.findi_exn (fun c -> c.cdc_name = "id") upd_cols in
+            BitArray.set mask id_ind false;
+            sprintf "~__mod_cols:(BitArray.of_repr_unsafe %S)"
+              (BitArray.to_repr mask)
+          end
           ::
              (List.map
                 (fun c ->
@@ -756,10 +1040,83 @@ let from_form cols =
   end
 
 
+(* prepares validations required for given [cols_inds].
+   returns
+     ( list of toplevel mask definitions to be glued before #save code
+     , list of (mask_definition_name, vld_func_name, attrs)
+     )
+ *)
+let generate_vld_masks cols_inds =
+  let n = List.length cols_inds in
+  let ind_of_attr attr =
+    snd &
+    List.get_single &
+    List.filter (fun (c, _i) -> c.cdc_name = attr) cols_inds
+  in
+  Queue.fold
+    (fun ((vld_masks_code, vld_masks) as acc) (attrs, func_name) ->
+       let is_required =
+         List.exists
+           (fun attr ->
+              List.exists
+                (fun (col, _ind) ->
+                   col.cdc_name = attr
+                )
+                cols_inds
+           )
+           attrs
+       in
+       if not is_required
+       then acc
+       else
+         let mask = BitArray.make n false in
+         List.iter
+           (fun attr -> BitArray.set mask (ind_of_attr attr) true)
+           attrs;
+         let mask_name = gensym (func_name ^ "_mask") in
+         let mask_code =
+           Cg.Struc.expr ~ty:"BitArray.t" mask_name &
+             Cg.Expr.call_gen "BitArray.of_repr_unsafe" & List.one &
+               Cg.Lit.string (BitArray.to_repr mask)
+         in
+         ( (mask_code :: vld_masks_code)
+         , ((mask_name, func_name, attrs) :: vld_masks)
+         )
+    )
+    ([], [])
+    validations
+
+
+(* dataset has columns [cols] -- which of them are updatable wrt validation? *)
+let updatable_cols cols =
+  let attrs = List.map (fun c -> c.cdc_name) cols in
+  List.filter
+    (fun col ->
+       let attr = col.cdc_name in
+       (* attribute is updatable only when all attributes of its
+          "validation group" is present in [cols]. *)
+       match (!!vld_by_attr)#get_opt attr with
+       | None ->
+           (* attribute isn't used in validations => updatable *)
+           true
+       | Some grp ->
+           let attrs_of_grp = (!!vld_by_key)#get_exn grp in
+           List.for_all
+             (fun agrp ->
+                List.exists ( ( = ) agrp ) attrs
+             )
+             attrs_of_grp
+    )
+    cols
+
+
 (* simple == for one table, one model, no special columns selection *)
 let generate_fetcher_simple ~qname ~body ~single ~ctx =
   add_data qname ctx;
   let cols = model_cols self_model_name in
+  let upd_cols = updatable_cols cols in
+  (* in future, not every [cols] will be equal to [model_cols ..] *)
+  let ins = can_insert cols in
   let cols_sql = String.concat ", " & List.map (fun c -> c.cdc_name) cols in
   let cols_inds = List.mapi (fun i c -> (c, i)) cols in
   let (body, vars) = body |> sql_tokenize |> sql_vars in
@@ -780,12 +1137,21 @@ let generate_fetcher_simple ~qname ~body ~single ~ctx =
     vars
   in
   let qname_uid = Cg.uid (String.capitalize qname) in
+  let (vld_masks_code, vld_masks) = generate_vld_masks cols_inds in
   out begin
-  Cg.Struc.module_ qname_uid
+  Cg.Struc.module_ qname_uid &
     [ to_form cols
-    ; generate_create cols
-    ; from_form cols
-    ; Cg.Struc.func "load" (fetcher_args @ ["()"]) begin
+    ]
+    @
+    vld_masks_code
+    @
+    [ generate_internal_create ~ins ~vld_masks ~upd_cols cols ]
+    @ (if ins
+       then [ "let create = __create"; from_form ~cols ~upd_cols ]
+       else []
+      )
+    @
+    [ Cg.Struc.func "load" (fetcher_args @ ["()"]) begin
         "Database.pg_query_result\n" ^
         Cg.Lit.string sql ^ "\n" ^
         "~params:\n" ^
@@ -811,4 +1177,8 @@ let data1b qname ?single body = code & fun ctx ->
     | None -> false
     | Some str -> bool_of_string ~place:"~single" str
   in
+  any_data_met := true;
   generate_fetcher_simple ~single ~qname ~body ~ctx
+
+(********************************************************************)
+
