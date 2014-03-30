@@ -1,7 +1,7 @@
 server_name = dresina-server
 
-server_packages = amall,amall.dbi,threads,lwt,lwt.preemptive
-all_packages = amall,amall.dbi,threads,lwt,lwt.preemptive
+server_packages = amall,amall.dbi,threads,lwt,lwt.preemptive,input_float
+all_packages = amall,amall.dbi,threads,lwt,lwt.preemptive,input_float
 
 find_pred = -name '*.ml'
 server_topdirs = app config internal/common internal/server db
