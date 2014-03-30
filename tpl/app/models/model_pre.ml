@@ -31,6 +31,10 @@ type context =
 let schema = lazy
   (Schema_tm.from_file (Filename.concat "proj-build" schema_bin_fname))
 
+let col_ml_type c =
+  let types = (Lazy.force schema).s_types in
+  let t_ml_type tn = (Hashtbl.find types tn).ty_ml_name in
+  t_ml_type c.cdc_type
 
 (********************************************************************)
 
@@ -370,12 +374,6 @@ let generate_delete ~tname cols =
     \  return_unit\n\
      )"
 
-
-let col_ml_type c =
-  let types = (Lazy.force schema).s_types in
-  let t_ml_type tn = (Hashtbl.find types tn).ty_ml_name in
-  let t = t_ml_type c.cdc_type in
-  if c.cdc_nullable then "(" ^ t ^ ") option" else t
 
 let instance_attr c ~upd_ind_opt ml_val =
   let n = c.cdc_name in
