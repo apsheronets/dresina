@@ -36,6 +36,10 @@ let col_ml_type c =
   let t_ml_type tn = (Hashtbl.find types tn).ty_ml_name in
   t_ml_type c.cdc_type
 
+let col_ml_opt_type c =
+  let t = col_ml_type c in
+  if c.cdc_nullable then "(" ^ t ^ ") option" else t
+
 (********************************************************************)
 
 let model_desc = Memo.create ~eq:String.eq begin fun model_name ->
@@ -60,6 +64,9 @@ let check_self_attr a =
        (model_cols self_model_name)
   then ()
   else failwith "Attribute %S not found in the current schema" a
+
+let col_of_self_attr a =
+  List.find (fun cdc -> cdc.cdc_name = a) (model_cols self_model_name)
 
 let out_ctm = Memo.create ~eq:( = ) &
   let c = ref 0 in
@@ -120,6 +127,25 @@ let () = code out
   "open Proj_common\nopen Forms_internal\nopen Models_internal\n\
    open Common_validations\n"
 
+let output_from_form c meth =
+  let ty = Cg.Expr.lid & col_ml_type c in
+  out & Cg.Struc.expr
+    ~ty:(Typ.arrow ["string"; ty])
+    (Cg.Expr.lid & "from_form__" ^ c.cdc_name)
+    ("From_form." ^ ty ^ "__" ^ (Cg.Expr.lid meth) ^ " " ^
+       (out_ctm c.cdc_type_mod)
+    )
+
+
+let () = code begin fun () ->
+  List.iter
+    (fun c ->
+       output_from_form c "default"
+    )
+    (model_cols self_model_name)
+end
+  ()
+
 (********************************************************************)
 
 let any_data_met = ref false
@@ -131,7 +157,7 @@ let check_no_data_met () =
 
 let validations = Queue.create ()
 
-let vld_attrs mlt =
+let attrs_of_mlt dir_name (mlt : mlt_val) =
   begin match mlt with
   | `Str a -> [a]
   | `List l ->
@@ -139,15 +165,15 @@ let vld_attrs mlt =
         (function
          | `Str a -> a
          | `List _ -> failwith
-             "Validation attributes must be either string \
-              or list of strings argument"
+             "%s attributes must be either string \
+              or list of strings argument" dir_name
         )
         l
   end
   |> fun a ->
     begin
       if a = []
-      then failwith "Validation must be applied to one or more attributes"
+      then failwith "%s must be applied to one or more attributes" dir_name
       else a
     end
   |> fun a ->
@@ -156,6 +182,8 @@ let vld_attrs mlt =
       a
     end
 
+let vld_attrs = attrs_of_mlt "Validation"
+let from_form_attrs = attrs_of_mlt "From_form"
 
 let out_validation_func attrs code =
   let basename = "__validate_" ^ String.concat "_" attrs in
@@ -419,15 +447,14 @@ let from_form_env ~getval_prefix cols =
          let n = c.cdc_name in
          sprintf "let __%s_opt =\n\
                  \  %s __errors __m __out_form\n\
-                 \    (Schema_code.pg_%s_of_string %s) %S %S\nin\n"
+                 \    from_form__%s %S %S\nin\n"
            n
            (getval_prefix ^
             if c.cdc_nullable
             then "_opt_or_store_error"
             else "_or_store_error"
            )
-           c.cdc_type
-           (out_ctm c.cdc_type_mod)
+           n
            self_model_name
            n
       )
@@ -1133,6 +1160,15 @@ let generate_fetcher_simple ~qname ~body ~single ~ctx =
     ]
   end
 
+
+let output_from_form_attrs attrs meth =
+  List.iter
+    (fun attr ->
+       let col = col_of_self_attr attr in
+       output_from_form col meth
+    )
+    attrs
+
 (********************************************************************)
 
 let table1 = string_args1 & fun tname -> gather & fun ctx ->
@@ -1180,5 +1216,12 @@ let validate1b mlt_attrs body = code & fun _ctx ->
   assert (attrs <> []);
   let name = out_validation_func attrs body in
   Queue.push (attrs, name) validations
+
+let from_form2 mlt_attrs mlt_meth = code & fun _ctx ->
+  let attrs = from_form_attrs mlt_attrs in
+  assert (attrs <> []);
+  let meth = expect_string "'from_form method'" mlt_meth in
+  output_from_form_attrs attrs meth
+
 (********************************************************************)
 

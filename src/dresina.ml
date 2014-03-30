@@ -100,6 +100,7 @@ let () =
        ; "common/sql_lexer.mll"
        ; "server/models_internal.ml"
        ; "common/common_validations.ml"
+       ; "server/from_form.ml"
        ]
     )
 

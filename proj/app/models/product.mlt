@@ -12,6 +12,8 @@
     | _, _ -> ()
 % end
 
+% from_form price round
+
 (* без указаний -- из базовой таблицы в модель: *)
 % begin data all
     from products
