@@ -31,17 +31,6 @@ type context =
 let schema = lazy
   (Schema_tm.from_file (Filename.concat "proj-build" schema_bin_fname))
 
-let table1 = string_args1 & fun tname -> gather & fun ctx ->
-  match ctx.cols with
-  | Some _ -> failwith "duplicate 'table' directive"
-  | None ->
-      let schema = Lazy.force schema in
-      let tab =
-        try Hashtbl.find schema.s_tables tname
-        with Not_found -> failwith
-          "Can't find table %S in current schema" tname
-      in
-      ctx.cols <- Some (tname, tab.tab_cols)
 
 (********************************************************************)
 
@@ -185,28 +174,6 @@ let out_validation_func attrs code =
     );
   out "\n;;\n";
   name
-
-let validate2 mlt_vld_func mlt_attrs = code & fun _ctx ->
-  check_no_data_met ();
-  let vld_func = expect_string "validation function" mlt_vld_func in
-  let attrs = vld_attrs mlt_attrs in
-  assert (attrs <> []);
-  List.iter
-    (fun attr ->
-       let attrs = [attr] in
-       let func_name = out_validation_func
-         attrs
-         (Cg.Expr.call_gen vld_func attrs)
-       in
-       Queue.push (attrs, func_name) validations
-    )
-    attrs
-
-let validate1b mlt_attrs body = code & fun _ctx ->
-  let attrs = vld_attrs mlt_attrs in
-  assert (attrs <> []);
-  let name = out_validation_func attrs body in
-  Queue.push (attrs, name) validations
 
 
 (* union-find *)
@@ -1169,6 +1136,18 @@ let generate_fetcher_simple ~qname ~body ~single ~ctx =
 
 (********************************************************************)
 
+let table1 = string_args1 & fun tname -> gather & fun ctx ->
+  match ctx.cols with
+  | Some _ -> failwith "duplicate 'table' directive"
+  | None ->
+      let schema = Lazy.force schema in
+      let tab =
+        try Hashtbl.find schema.s_tables tname
+        with Not_found -> failwith
+          "Can't find table %S in current schema" tname
+      in
+      ctx.cols <- Some (tname, tab.tab_cols)
+
 let data1b qname ?single body = code & fun ctx ->
   let qname = expect_string "dataset name" qname
   and single = expect_string_opt "~single" single in
@@ -1181,5 +1160,26 @@ let data1b qname ?single body = code & fun ctx ->
   any_data_met := true;
   generate_fetcher_simple ~single ~qname ~body ~ctx
 
+let validate2 mlt_vld_func mlt_attrs = code & fun _ctx ->
+  check_no_data_met ();
+  let vld_func = expect_string "validation function" mlt_vld_func in
+  let attrs = vld_attrs mlt_attrs in
+  assert (attrs <> []);
+  List.iter
+    (fun attr ->
+       let attrs = [attr] in
+       let func_name = out_validation_func
+         attrs
+         (Cg.Expr.call_gen vld_func attrs)
+       in
+       Queue.push (attrs, func_name) validations
+    )
+    attrs
+
+let validate1b mlt_attrs body = code & fun _ctx ->
+  let attrs = vld_attrs mlt_attrs in
+  assert (attrs <> []);
+  let name = out_validation_func attrs body in
+  Queue.push (attrs, name) validations
 (********************************************************************)
 
