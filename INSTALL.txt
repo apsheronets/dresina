@@ -1,19 +1,22 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 48ac573a5a403f73233e876b4e92b9d1) *)
+(* DO NOT EDIT (digest: ca80d823a132d28dff72f9acbc4f69be) *)
+
 This is the INSTALL file for the dresina distribution.
 
 This package uses OASIS to generate its build system. See section OASIS for
-full information. 
+full information.
 
 Dependencies
 ============
 
 In order to compile this package, you will need:
+
 * ocaml
 * findlib
 * amall
 * cadastr
 * cmdliner
+* input_float
 
 Installing
 ==========
@@ -26,7 +29,7 @@ Installing
 Uninstalling
 ============
 
-1. Go to the root of the package 
+1. Go to the root of the package
 2. Run 'ocaml setup.ml -uninstall'
 
 OASIS

@@ -1,7 +1,7 @@
 # OASIS_START
-# DO NOT EDIT (digest: 428240cac632111d2f69d7f8f2eee878)
-# Ignore VCS directories, you can use the same kind of rule outside 
-# OASIS_START/STOP if you want to exclude directories that contains 
+# DO NOT EDIT (digest: cb44dcf77d3be778ddbec0be6a381ed7)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
 <**/.svn>: -traverse
 <**/.svn>: not_hygienic
@@ -17,13 +17,15 @@
 "src/dresina.byte": pkg_amall
 "src/dresina.byte": pkg_amall.dbi
 "src/dresina.byte": pkg_cadastr
-"src/dresina.byte": pkg_threads
 "src/dresina.byte": pkg_cmdliner
+"src/dresina.byte": pkg_input_float
+"src/dresina.byte": pkg_threads
 <src/*.ml{,i}>: pkg_amall
 <src/*.ml{,i}>: pkg_amall.dbi
 <src/*.ml{,i}>: pkg_cadastr
-<src/*.ml{,i}>: pkg_threads
 <src/*.ml{,i}>: pkg_cmdliner
+<src/*.ml{,i}>: pkg_input_float
+<src/*.ml{,i}>: pkg_threads
 # OASIS_STOP
 
 <**/*.ml{,i}> : warn_A, debug

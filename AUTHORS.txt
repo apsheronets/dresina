@@ -1,6 +1,9 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: f1d4d7cccde9d657733c04593f54eb3a) *)
-Authors of dresina
-gds
-komar
+(* DO NOT EDIT (digest: 50d67d719311bb6a9fea3b34309cd7b3) *)
+
+Authors of dresina:
+
+* gds
+* komar
+
 (* OASIS_STOP *)
