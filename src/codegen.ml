@@ -1,3 +1,15 @@
+(* todo: rewrite this shit!111
+   plan:
+     - composable code elements must show it with their types; so there
+       must be specialized functions to build module, class
+     - no scope-checking (not needed)
+     - information about parentheses (like
+       "func Constr (arg1, arg2) funcarg2"), ";;", end-of-line --
+       gather and use at runtime
+     - think about "i want to add let-in binding in front of some expr",
+       instead of current "Cg.Expr.let_in"
+ *)
+
 open Cd_All
 open Strings.Latin1
 open Printf

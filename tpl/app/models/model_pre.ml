@@ -174,7 +174,8 @@ let out_validation_func attrs code =
     name (String.concat " " attrs);
   out & directive_linedir ();
   out code;
-  out & Cg.line_directive "_model_cogenerator_" 0;
+  out "\n";
+  out & Cg.line_directive "_model_codegenerator_" 0;
   out & Printf.sprintf
     "  end with e -> store_validation_error (%s) __errors e"
     (let ml_model = Cg.Lit.string self_model_name in
