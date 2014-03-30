@@ -388,7 +388,8 @@ let instance_attr c ~upd_ind_opt ml_val =
   sprintf
      "val %s %s : %s = %s\n\
       method %s = %s\n"
-     (if upd_ind_opt = None then "" else "mutable") n (col_ml_type c) ml_val
+     (if upd_ind_opt = None then "" else "mutable") n
+       (col_ml_opt_type c) ml_val
      n n
   ^
   match upd_ind_opt with
