@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: ca80d823a132d28dff72f9acbc4f69be) *)
+(* DO NOT EDIT (digest: a6e06f8404934ef106ea6cf3186ad4b7) *)
 
 This is the INSTALL file for the dresina distribution.
 
@@ -17,6 +17,7 @@ In order to compile this package, you will need:
 * cadastr
 * cmdliner
 * input_float
+* pprint
 
 Installing
 ==========

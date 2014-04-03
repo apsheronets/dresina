@@ -5,7 +5,7 @@ Synopsis:    OCaml web stuff
 Authors:     gds, komar
 License:     LGPL-2.1 with OCaml linking exception
 Plugins:     DevFiles (0.3), META (0.3), StdFiles (0.3)
-BuildDepends: amall, amall.dbi, cadastr, threads, cmdliner, input_float
+BuildDepends: amall, amall.dbi, cadastr, threads, cmdliner, input_float, pprint
 
 Executable dresina
   Path:       src
