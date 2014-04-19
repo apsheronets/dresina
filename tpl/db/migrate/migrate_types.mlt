@@ -48,8 +48,8 @@ let ml_of_ctm_option = function
 
 type column_def_list = column_def list
 
-let ml_of_column_def_list lst =
-  Expr.list (List.map ml_of_column_def lst)
+let expr_of_column_def_list lst =
+  Expr.list (List.map expr_of_column_def lst)
 
 % record_type column_ref
   % field cr_table string
@@ -65,6 +65,11 @@ let ml_of_column_def_list lst =
   % sum_constr Md_down
 
 % alias func_no int
+
+% tuple_type body
+  % tuple_arg string
+  % tuple_arg int
+  % tuple_arg string
 
 % sum_type executable_migration_action
   % sum_constr Ema_sql
@@ -103,26 +108,20 @@ let ml_of_column_def_list lst =
     % sum_arg string
   % sum_constr Pg_of_string
     % sum_arg string
-    % sum_arg string
+    % sum_arg body
   % sum_constr Pg_to_string
     % sum_arg string
-    % sum_arg string
+    % sum_arg body
   % sum_constr Pg_ddl
     % sum_arg string
-    % sum_arg string
+    % sum_arg body
   % sum_constr Inherit_type
     % sum_arg string
     % sum_arg string
-% flush
 
-type migration_item_generic =
-  (migration_direction * executable_migration_action)
-
-let ml_of_migration_item_generic (d, l) =
-  Tuple.constr
-    [ ml_of_migration_direction d
-    ; ml_of_executable_migration_action l
-    ]
+% tuple_type migration_item_generic
+  % tuple_arg migration_direction
+  % tuple_arg executable_migration_action
 
 % sum_type migration_item
   % sum_constr Mi_special
@@ -131,9 +130,9 @@ let ml_of_migration_item_generic (d, l) =
     % sum_arg migration_item_generic
 % flush
 
-type loc = (string * int)
-
-let ml_of_loc (fname, lineno) = Tuple.constr [Lit.string fname; Lit.int lineno]
+% tuple_type loc
+  % tuple_arg string
+  % tuple_arg int
 
 % record_type migration_loc
   % field ml_loc loc

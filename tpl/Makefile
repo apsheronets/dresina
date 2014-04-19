@@ -1,7 +1,7 @@
 server_name = dresina-server
 
-server_packages = amall,amall.dbi,threads,lwt,lwt.preemptive,input_float
-all_packages = amall,amall.dbi,threads,lwt,lwt.preemptive,input_float
+server_packages = amall,amall.dbi,threads,lwt,lwt.preemptive,input_float,pprint
+all_packages = amall,amall.dbi,threads,lwt,lwt.preemptive,input_float,pprint
 
 find_pred = -name '*.ml'
 server_topdirs = app config internal/common internal/server db
@@ -29,7 +29,7 @@ server_optobjs = $(server_mls:.ml=.cmx)
 sch_dirs = db/migrate internal/common internal/make_schema \
              internal/common
 sch_files = $(shell find $(sch_dirs) -name '*.ml')
-sch_packages = cadastr,amall.dbi
+sch_packages = cadastr,amall.dbi,pprint
 sch_ocamlc = $(ocamlc_noopts) $(all_comp_opts) \
                $(addprefix -I , $(sch_dirs)) \
                -package $(sch_packages) 

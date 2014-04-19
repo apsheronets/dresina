@@ -7,22 +7,22 @@ type binding =
       (* identifier with bound string (argument name to be passed to
          controller) *)
   ; level : int
-  ; from_string : string
-      (* ml code that translates __uri_patt to ml value *)
-  ; to_string : string -> string
-      (* fun expr_ml_code -> code returning string to be glued into path/url
+  ; from_string : expr
+      (* expression to convert bound "__uri_patt" (.arg_ident) to typed value.
+         returns "no_route_ml" in case of error. *)
+  ; to_string : expr -> expr
+      (* "fun expr_ml_code -> code" returning string to be glued into path/url
          for this component
        *)
   }
 
-let bound_ident ~level =
-  Expr.lid ("__uri_patt_" ^ string_of_int level)
+let bound_ident ~level = "__uri_patt_" ^ string_of_int level
 
 type action =
   { cntr_name : string
   ; action_name : string
   ; bindings : binding list
-  ; linedir : string
+  ; loc : string * int
   }
 
 type metaseg =
@@ -32,7 +32,9 @@ type metaseg =
 
 type meth = [ `GET | `POST ]
 let all_meths = [`GET; `POST]
-let ml_of_meth : meth -> string = function `GET  -> "`GET" | `POST -> "`POST"
+let patt_of_meth : meth -> patt = function
+| `GET  -> Patt.poly "`GET" []
+| `POST -> Patt.poly "`POST" []
 
 type metapath = metaseg list
 
@@ -43,29 +45,31 @@ type context = route list ref
 (****************************)
 
 
-let no_route_ml = "raise No_route"
+let no_route_expr = Expr.call "raise" [Expr.constr "No_route" []]
 
 let binding ~level ~ty ~id =
   let b = bound_ident ~level in
   let (from_string, to_string) =
+    let catch_failure body =
+      Expr.try_ body
+      [   Patt.constr "Failure" [Patt.any]
+        , no_route_expr
+      ]
+    in
     match ty with
     | "int" ->
-        ( "(try int_of_string "
-          ^ b
-          ^ " with Failure _ -> "
-          ^ no_route_ml ^ ")"
-        , fun ident -> "string_of_int " ^ ident
+        ( catch_failure &
+          Expr.call "int_of_string" [Expr.lid b]
+        , fun x -> Expr.call "string_of_int" [x]
         )
     | "id" | "int64" ->
-        ( "(try Int64.of_string "
-          ^ b
-          ^ " with Failure _ -> "
-          ^ no_route_ml ^ ")"
-        , fun ident -> "Int64.to_string " ^ ident
+        ( catch_failure &
+          Expr.call_mod ["Int64"] "of_string" [Expr.lid b]
+        , fun x -> Expr.call_mod ["Int64"] "to_string" [x]
         )
     | "string" ->
-        ( b
-        , fun ident -> ident
+        ( Expr.lid b
+        , fun x -> x
         )
     | _ -> failwith
         "routes: type %S is not supported in uri pattern" ty
@@ -129,10 +133,12 @@ let handler meth uri_patt_str cntr_name cntr_meth context =
         let bindings = bindings_of_mpath mpath in
         let cntr_name = String.capitalize cntr_name in
         let action =
-          { cntr_name = uid ~place:"Controller name" cntr_name
-          ; action_name = Expr.lid cntr_meth
+          { cntr_name =
+             ( check_uid ~place:"Controller name" cntr_name; cntr_name )
+          ; action_name =
+             ( check_lid ~place:"Action name" cntr_meth; cntr_meth )
           ; bindings = bindings
-          ; linedir = directive_linedir ()
+          ; loc = directive_loc ()
           }
         in
         context := add_handler !context meth mpath action

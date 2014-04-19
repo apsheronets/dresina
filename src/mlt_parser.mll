@@ -1,6 +1,6 @@
 {
 
-module Cg = Codegen
+module Cg = Codegen.Cg2
 
 let error fname lineno fmt =
   Printf.ksprintf
@@ -9,7 +9,7 @@ let error fname lineno fmt =
     )
     fmt
 
-let ml_code txt = Cg.Sum.constr "Ml" [ Cg.Lit.string txt ]
+let ml_code txt = Cg.Expr.(constr "Ml" [string txt])
 
 (* returns code that will be placed inside Dir constructor *)
 let code_of_directive dirtype dir args =
@@ -26,29 +26,27 @@ let code_of_directive dirtype dir args =
     | `Strings -> Printf.sprintf "%s%i" dir pos_args_count
     | `With_body -> Printf.sprintf "%s%ib" dir pos_args_count
   in
-  if args <> []
-  then
-    let args_code = List.map
-      (function
-       | `Pos code | `Body code -> code
-       | `Lab (label, code) -> "~" ^ label ^ ":(" ^ code ^ ")"
-      )
-      args
-    in
-    Cg.Expr.call func_name args_code
-  else Cg.Expr.lid func_name
+  let args_code = List.map
+    (function
+     | `Pos code -> Cg.Arg.pos code
+     | `Body (fname, lineno, code) ->
+         Cg.Arg.pos (Cg.Expr.(tuple [string fname; int lineno; code]))
+     | `Lab (label, code) -> Cg.Arg.lab label code
+    )
+    args
+  in
+  Cg.Expr.(app_args (lid func_name) args_code)
 
 let dir_code fname lineno code =
-  let line_dir = "\n" ^ Cg.line_directive fname lineno in
-  Cg.Sum.constr "Dir"
-    [
-        "(dir_with_loc " ^ Cg.Lit.string fname ^ " " ^ Cg.Lit.int lineno
-      ^ line_dir
-      ^ code
-      ^ "\n)"
-    ]
+  Cg.Expr.(constr "Dir"
+    [ call "dir_with_loc"
+        [ string fname
+        ; int lineno
+        ; linedir fname lineno code
+        ]
+    ])
 
-let ret_string str = Some (Cg.Sum.constr "`Str" [Cg.Lit.string str])
+let ret_string str = Some Cg.Expr.(poly "`Str" [string str])
 }
 
 
@@ -127,17 +125,17 @@ and directive fname lineno = parse
       let begin_dir_lineno = lineno in
       let (lineno, dir_name, dir_args) =
         directive_no_body fname lineno lexbuf in
+      let dir_lineno = lineno in
       let buf = Buffer.create 100 in
-      Buffer.add_string buf (Cg.line_directive fname lineno);
       let lineno = ml_text lineno buf lexbuf in
-      let body_ml = Cg.Lit.string (Buffer.contents buf) in
+      let body_ml = Cg.Expr.string (Buffer.contents buf) in
       let lineno = body_end lineno lexbuf in
       ( lineno
       , dir_code fname begin_dir_lineno
           (code_of_directive
              `With_body
              dir_name
-             (dir_args @ [`Body body_ml])
+             (dir_args @ [`Body (fname, dir_lineno, body_ml)])
           )
       )
     }
@@ -261,7 +259,7 @@ and list fname lineno rev_acc = parse
 
   ']' space*
     {
-      Cg.Sum.constr "`List" [Cg.Expr.list (List.rev rev_acc)]
+      Cg.Expr.poly "`List" [Cg.Expr.list (List.rev rev_acc)]
     }
 
 | ""

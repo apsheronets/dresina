@@ -3,6 +3,7 @@ open Cd_All
 open Strings.Latin1
 open Printf
 open Mlt
+open Codegen
 
 (* TODO: проверять имена таблиц/столбцов на отсутствие кавычек тут. *)
 
@@ -13,11 +14,11 @@ type context =
   { mutable creating_table :
      (string * column_def Queue.t * (string * int)) option
   ; migration : migration_loc Queue.t
-  ; ocaml_functions : (int * string) Queue.t
+  ; ocaml_functions : (int * body) Queue.t
   ; mutable ocaml_funcno : int
   }
 
-let register_ocaml_migration body ctx =
+let register_ocaml_migration (body : body) ctx =
   let n = ctx.ocaml_funcno in
   ctx.ocaml_funcno <- n + 1;
   Queue.push (n, body) ctx.ocaml_functions;
@@ -229,8 +230,8 @@ let rename_reference4 = string_args4 rename_reference
 let rename_reference3 = string_args3 & fun tname reftable newcolumn ctx ->
   rename_reference tname (default_ref_col ~reftable) reftable newcolumn ctx
 
-let mig_sql dir body ctx = (common &
-  Mi_generic (dir, Ema_sql (strip_line_directive body))
+let mig_sql dir ((_lineno, _fname, bodycode) : body) ctx = (common &
+  Mi_generic (dir, Ema_sql bodycode)
   ) ctx
 
 let up_sql0b = mig_sql Md_up
@@ -251,7 +252,7 @@ let drop_table1 = string_args1 & fun tname -> common_spec &
 (************************************************)
 
 let create_type2 = string_args2 & fun ty_name ml_type -> common_spec &
-  let () = Codegen.check_lid ~place:"type name" ty_name in
+  let () = check_lid ~place:"type name" ty_name in
   Create_type (ty_name, ml_type)
 
 let pg_of_string1b = string_args1 & fun ty b -> common_spec &
@@ -261,11 +262,11 @@ let pg_to_string1b = string_args1 & fun ty b -> common_spec &
   Pg_to_string (ty, b)
 
 let pg_ddl2 = string_args2 & fun ty ddl -> common_spec &
-  Pg_ddl (ty, "function _ -> " ^ Codegen.Lit.string ddl)
+  Pg_ddl (ty, make_body & "function _ -> " ^ Printf.sprintf "%S" ddl)
 
 let pg_ddl1b = string_args1 & fun ty body -> common_spec &
   Pg_ddl (ty, body)
 
 let inherit_type2 = string_args2 & fun ty_child ty_base -> common_spec &
-  let () = Codegen.check_lid ~place:"type name" ty_child in
+  let () = check_lid ~place:"type name" ty_child in
   Inherit_type (ty_child, ty_base)

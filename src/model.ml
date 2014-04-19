@@ -2,7 +2,7 @@ open Cd_All
 open Strings.Latin1
 open Printf
 open Common
-module Cg = Codegen
+module Cg = Codegen.Cg2
 
 let model_src_dir = "proj/app/models"
 let model_dst_dir = "proj-build/app/models"

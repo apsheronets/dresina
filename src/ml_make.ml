@@ -15,7 +15,6 @@ let glue mls out =
   end
 
 let wrap_in_module ~m src dst =
-  Codegen.check_uid ~place:"Ml_make.wrap_in_module" m;
   Make.make1 dst [src] begin fun () ->
     Filew.with_file_out_bin dst begin fun out_ch ->
       Printf.fprintf out_ch "module %s = struct\n" m;

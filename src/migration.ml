@@ -83,22 +83,21 @@ let () =
   let dst = reg_all in
   Make.make [dst] ~virtdeps:[dep_migs] [] begin fun () ->
     let contents =
-      Cg.Struc.items &
-        [ Cg.Struc.func "register" ["()"] &
+        [ Cg.Struc.func "register" [Cg.Patt.unit] &
           Cg.Expr.seq &
           List.map
             (fun (_src, dst) ->
                let modname = String.capitalize & Filename.basename &
                  change_suffix ~place:"register_all_migrations" dst ".ml" "" in
-               Cg.Expr.call_gen (Cg.Expr.modqual modname "register")
-                 [ "()"
+               Cg.Expr.call_mod [modname] "register"
+                 [ Cg.Expr.unit
                  ]
             )
             migrations
-        ; Cg.Struc.expr "last_migration_id" & Cg.Lit.string last_migration_id
+        ; Cg.Struc.expr "last_migration_id" & Cg.Expr.string last_migration_id
         ]
     in
-      Filew.spit_bin dst contents
+      Filew.spit_bin dst & Cg.Implem.to_string contents
   end
 
 

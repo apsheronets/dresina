@@ -3,20 +3,18 @@ let ctx =
   }
 
 let generate mlt =
-  out "open Codegen\n";
+  out [Struc.open_ ["Codegen"; "Cg2"]];
   begin
     List.iter
       (function
-       | Ml txt -> out txt
-       | Dir f ->
-           f ctx
+       | Ml txt -> out_raw txt
+       | Dir f -> f ctx
       )
       mlt
   end;
   finish ctx;
-  out begin
+  out & List.one &
     Struc.expr "all_types_tag" &
-      Lit.string &
+      Expr.string &
       Printf.sprintf "(module hash %i)" &
       full_hash tags_of_types
-  end

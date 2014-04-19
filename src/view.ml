@@ -2,7 +2,7 @@ open Cd_All
 open Strings.Latin1
 open Printf
 open Common
-module Cg = Codegen
+module Cg = Codegen.Cg2
 
 let view_src_dir = "proj/app/views"
 let view_dst_dir = "proj-build/app/views"
@@ -22,7 +22,8 @@ let compare_view v1 v2 =
   else Pervasives.compare v1.view v2.view
 
 let view_func_name ~cntr ~view =
-  Cg.Expr.lid (sprintf "%s_%s" cntr view)
+  let l = sprintf "%s_%s" cntr view in
+  Cg.check_lid l; l
 
 let layouts_cntr = "layouts"
 
@@ -72,8 +73,8 @@ let view_desc ~cntr ~fname =
   then begin
     let view = Filename.chop_suffix fname suf in
     Some
-      { cntr = Cg.Expr.lid cntr
-      ; view = Cg.Expr.lid view
+      { cntr = cntr
+      ; view = view
       ; suffix = suf
       ; make = make_html_eml
       ; src = view_src_dir // cntr // fname
@@ -135,13 +136,13 @@ let () =
   let dst = "proj-build/internal/server/models_views.ml" in
   Make.make [dst] ~virtdeps:[dep_views; Model.dep_models] [] begin fun () ->
     let contents =
-      Cg.line_directive "__models_views__" 1 ^
-      "open Proj_common\n\n" ^
+      Cg.Struc.linedir "__models_views__" 1 ::
+      Cg.Struc.open_ ["Proj_common"] ::
       let cv_groupped = List.group_pairs ~fst_eq:String.eq cntr_view_list in
       let models = List.map (fun m -> (m.Model.base, ())) Model.models in
       let groupped = List.merge_pairs ~fst_compare:String.compare
         cv_groupped models in
-      Cg.Struc.items & List.map
+      List.map
         (fun (cntr, views_or_model) ->
            Cg.Struc.module_ (String.capitalize cntr) begin
              begin match views_or_model with
@@ -150,15 +151,16 @@ let () =
                    (fun view ->
                       Cg.Struc.module_ (String.capitalize view) & List.one &
                       Cg.Struc.func "render"
-                        ["?(layout=Layout.application)"; "env"] &
+                        [ Cg.Patt.opt "layout"
+                            ~def:(Cg.Expr.lid_mod ["Layout"] "application")
+                        ; Cg.Patt.lid "env"
+                        ] &
                       Cg.Expr.call "respond_renderer"
-                        [ "layout"
-                        ; Cg.Expr.call_gen
-                            (Cg.Expr.modqual
-                               views_modname
-                               (view_func_name ~cntr ~view)
-                            )
-                            ["env"]
+                        [ Cg.Expr.lid "layout"
+                        ; Cg.Expr.call_mod
+                            [views_modname]
+                            (view_func_name ~cntr ~view)
+                            [Cg.Expr.lid "env"]
                         ]
                    )
                    views
@@ -168,13 +170,13 @@ let () =
              begin match views_or_model with
              | `Fst _views -> []
              | `Both (_, ()) | `Snd () ->
-                 ["include Model_" ^ cntr]
+                 [Cg.Struc.include_ ["Model_" ^ cntr]]
              end
            end
         )
         groupped
     in
-      Filew.spit_bin dst contents
+      Filew.spit_bin dst & Cg.Implem.to_string contents
   end
 
 
@@ -189,10 +191,10 @@ let () =
   end;
   Make.make [layouts_ml_dst] [] ~virtdeps:[dep_layouts] begin fun () ->
     Filew.spit_bin layouts_ml_dst begin
-      Cg.Struc.items &
+      Cg.Implem.to_string &
       List.map begin fun l ->
           Cg.Struc.expr l.view &
-          Cg.Expr.modqual (layout_mod_name ~view:l.view) "render"
+          Cg.Expr.lid_mod [layout_mod_name ~view:l.view] "render"
         end
         layouts
     end

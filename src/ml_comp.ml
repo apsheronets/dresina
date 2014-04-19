@@ -1,7 +1,7 @@
 open Cd_All
 open Common
 
-module Cg = Codegen
+module Cg = Codegen.Cg2
 
 let copy_ml_to_channel ~out_ch fname =
   Filew.with_file_in_bin

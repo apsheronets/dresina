@@ -4,6 +4,8 @@ open Staging
 open Ml_comp
 open Common
 
+module Cg = Codegen.Cg2
+
 let dbpkgs = ["amall.dbi"]
 let webpkgs = ["amall"]
 let allpkgs = List.uniq ~eq:String.eq (dbpkgs @ webpkgs)
@@ -18,7 +20,7 @@ let module_name_of_fname fn =
   let n = Filename.basename fn in
   let n = change_suffix ~place n ".ml" "" in
   let m = String.capitalize n in
-  Codegen.check_uid ~place m;
+  Cg.check_uid ~place m;
   m
 
 let () = List.iter

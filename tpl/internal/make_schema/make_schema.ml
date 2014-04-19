@@ -1,7 +1,7 @@
 open Cd_All
 open Schema_types
 open Apply_migrations
-module Cg = Codegen
+open Codegen.Cg2
 
 (**********************************)
 
@@ -15,36 +15,47 @@ let hashtbl_map_to_list f h =
 
 let emit_schema_code () =
   Filew.spit_bin schema_code_fname begin
-    "open Migrate_types\n\
-     let ddl_of_type : (string, column_type_modifier -> string) Hashtbl.t =\n\
-    \  Hashtbl.create 67\n"
-    ^ Cg.Struc.items
-        (List.flatten &
-         hashtbl_map_to_list
-           (fun tyname tydesc ->
-              let ddl_body = get_type_attr (fun ty -> ty.ty_pg_ddl) tydesc in
-              let ml_type = tydesc.ty_ml_name in
-              [ Printf.sprintf
-                "let () = Hashtbl.add ddl_of_type %S (\n%s\n)\n"
-                  tyname ddl_body
-              ;
-                Printf.sprintf
-                  "let pg_%s_of_string\
-                  \ : column_type_modifier -> string -> %s\
-                  \ =\n%s\n"
-                  tyname ml_type
-                  (get_type_attr (fun ty -> ty.ty_pg_of_string) tydesc)
-              ;
-                Printf.sprintf
-                  "let pg_%s_to_string\
-                  \ : column_type_modifier -> %s -> string\
-                  \ =\n%s\n"
-                  tyname ml_type
-                  (get_type_attr (fun ty -> ty.ty_pg_to_string) tydesc)
+    Implem.to_string &
+    [ Struc.open_ ["Migrate_types"]
+    ; Struc.expr "ddl_of_type"
+        ~typ:(Typ.param
+                (Typ.prim ~mod_path:["Hashtbl"] "t")
+                [ Typ.prim "string"
+                ; Typ.arrow
+                    [ Typ.prim "column_type_modifier"
+                    ; Typ.prim "string"
+                    ]
+                ]
+             ) &
+        Expr.call_mod ["Hashtbl"] "create" [Expr.int 67]
+    ]
+    @
+    (List.flatten &
+       hashtbl_map_to_list
+         (fun tyname tydesc ->
+            let ddl_body = get_type_attr (fun ty -> ty.ty_pg_ddl) tydesc in
+            let ml_type = tydesc.ty_ml_name in
+            let ctm_typ = Typ.prim "column_type_modifier" in
+            [ Struc.let_ Patt.unit &
+              Expr.call_mod ["Hashtbl"] "add"
+              [ Expr.lid "ddl_of_type"
+              ; Expr.string tyname
+              ; Expr.of_body ddl_body
               ]
-           )
-           schema.s_types
-        )
+            ; Struc.expr ("pg_" ^ tyname ^ "_of_string")
+                ~typ:(Typ.arrow [ctm_typ; Typ.prim "string"; Typ.prim ml_type])
+                (Expr.of_body &
+                 get_type_attr (fun ty -> ty.ty_pg_of_string) tydesc
+                )
+            ; Struc.expr ("pg_" ^ tyname ^ "_to_string")
+                ~typ:(Typ.arrow [ctm_typ; Typ.prim ml_type; Typ.prim "string"])
+                (Expr.of_body &
+                 get_type_attr (fun ty -> ty.ty_pg_to_string) tydesc
+                )
+            ]
+         )
+         schema.s_types
+    )
   end
 
 let don't_generate_sql =
@@ -87,7 +98,7 @@ let () =
         let () =
           match e with
           | Error ((fname, lineno), id, txt) ->
-              Codegen.codegen_error fname lineno
+              output_codegen_error fname lineno
                 (Printf.sprintf "Error checking migration %S: %s" id txt)
           | e ->
               Printf.eprintf "Error checking migrations: %s\n%!"

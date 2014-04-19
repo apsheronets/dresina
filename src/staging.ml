@@ -83,82 +83,113 @@ let datadef_of_mlt fname =
 
 open Ml_comp
 
-let mlt_typedefs =
+let mlt_typedefs_si =
   let open Cg in
   let open Typ in
-    dummy_line_directive
-  ^ Sum.typedef "mldir"
-      [ ("Ml", [prim "string"]);
-        ("Dir", [arrow [ prim "context" ; prim "unit" ]])
-      ]
+  [ Struc.linedir "_mlt_typedefs_" 0
+  ; Struc.type_
+      (prim "mldir")
+      (sum
+         [ ("Ml", [prim "string"]);
+           ("Dir", [arrow [ prim "context" ; prim "unit" ]])
+         ]
+      )
+  ]
+let mlt_typedefs = Cg.Implem.to_string mlt_typedefs_si
 
 let output_mlt ~out_ch list_item_codes : unit =
-  output_string out_ch Cg.dummy_line_directive;
-  output_string out_ch &
-  Cg.Struc.expr ~ty:(Cg.Typ.param "list" ["mldir"])
+  output_string out_ch & Cg.Implem.to_string & [Cg.Struc.linedir "_mlt_" 0];
+  output_string out_ch & Cg.Implem.to_string & List.one &
+  Cg.Struc.expr ~typ:(Cg.Typ.(param (prim "list") [prim "mldir"]))
     "mlt"
     (Cg.Expr.list list_item_codes)
 
-let out_ch_ident ~i =
-  Cg.Expr.lid & sprintf "out_ch_%i" i
+let out_ch_ident ~i = sprintf "out_ch_%i" i
 
-let prepare_output outs =
-  Cg.line_directive "_prepare_output_" 0 ^
-  String.concat "" begin
+
+
+let prepare_output outs = Cg.Implem.to_string
+( Cg.Struc.linedir "_prepare_output_" 0
+::
+  begin
+    List.flatten &
     List.mapi begin fun i (out_suffix, _out_fname) ->
-        let i = i + 1 in
-        let out_ident =
-          if out_suffix = ""
-          then "out"
-          else Cg.Expr.lid ("out_" ^ out_suffix) in
-        let ch = out_ch_ident ~i in
-        Cg.Struc.expr
+      let i = i + 1 in
+      let out_ident =
+        if out_suffix = ""
+        then "out"
+        else "out_" ^ out_suffix in
+      let out_ident_raw = out_ident ^ "_raw" in
+      let ch : string = out_ch_ident ~i in
+      let open Cg in
+      [ Struc.expr
           ch
-          (Cg.Expr.call "open_out_bin" [Cg.Arr.get "Sys.argv" & Cg.Lit.int i])
-        ^
-        Cg.Struc.expr
+          (Expr.call "open_out_bin"
+             [Expr.inj & sprintf "Sys.argv.(%i)" i]
+          )
+      ; Struc.expr
+          out_ident_raw
+          (Expr.call "output_string" [Expr.lid ch])
+      ; Struc.func
           out_ident
-          (Cg.Expr.call "output_string" [ch])
-      end
-      outs
+          [Patt.lid "struc_items"]
+          (Expr.call out_ident_raw
+             [Expr.call_mod ["Implem"] "to_string" [Expr.lid "struc_items"]
+             ]
+          )
+      ]
+    end
+    outs
   end
+)
 
 let call_generation outs =
-  let close_all_code =
-    Cg.Expr.seq & List.mapi begin fun i _ ->
+  let open Cg in
+  let open Expr in
+  let close_all_expr =
+    seq & List.mapi begin fun i _ ->
         let i = i + 1 in
-        Cg.Expr.call "close_out_noerr" [out_ch_ident ~i]
+        Cg.Expr.(call "close_out_noerr" [lid & out_ch_ident ~i])
       end
       outs
   in
-  let remove_all_code =
-    let i = Cg.Expr.lid "i" in
-    Cg.Expr.for_ i (Cg.Lit.int 1) (Cg.Lit.int (List.length outs)) [
-      Cg.Expr.let_in "fn" (Cg.Arr.get "Sys.argv" i) begin
-        "try Sys.remove fn \n\
-         with e -> \n\
-           Printf.eprintf \"warning: can't remove file %s: %s\" \n\
-             fn (Printexc.to_string e) \n\
-        "
+  let remove_all_expr =
+    for_ "i" (int 1) (int (List.length outs)) begin
+      let_in (Patt.lid "fn") (inj "Sys.argv.(i)") begin
+        try_ begin
+          call_mod ["Sys"] "remove" [lid "fn"]
+        end
+        [ ( Patt.lid "e"
+          , call_mod ["Printf"] "eprintf"
+             [ string "warning: can't remove file %s: %s"
+             ; lid "fn"
+             ; call_mod ["Printexc"] "to_string" [lid "e"]
+             ]
+          )
+        ]
       end
-    ]
+    end
   in
-  Cg.line_directive "_call_generation_" 0 ^
-    Cg.Struc.expr "()" begin
-    Cg.Expr.let_in "close_all ()" close_all_code begin
-    Cg.Expr.let_in "remove_all ()" remove_all_code begin
-      "try \n\
-         generate mlt; \n\
-         close_all () \n\
-       with \n\
-       | e -> \n\
-           close_all (); \n\
-           remove_all (); \n\
-           raise e \n\
-      "
-    end
-    end
-    end
+  Implem.to_string &
+  [ Struc.linedir "_call_generation_" 0
+  ; Struc.let_ Patt.unit &
+    let open Expr in
+    let_in Patt.(func "close_all" [unit]) close_all_expr &
+    let_in Patt.(func "remove_all" [unit]) remove_all_expr &
+    try_ begin seq
+      [ call "generate" [lid "mlt"]
+      ; call "close_all" [unit]
+      ]
+      end
+      [ ( Patt.lid "e"
+        , seq
+            [ call "close_all" [unit]
+            ; call "remove_all" [unit]
+            ; call "raise" [lid "e"]
+            ]
+        )
+      ]
+  ]
 
 let dir_with_loc =
 "let msg_of_exn e = match e with \n\
@@ -168,13 +199,16 @@ let dir_with_loc =
  let __dir_fname = ref \"\" and __dir_lineno = ref 0;; \n\
  let directive_linedir () = line_directive !__dir_fname !__dir_lineno;; \n\
  let directive_loc () = (!__dir_fname, !__dir_lineno);; \n\
- let dir_with_loc fname lineno dir ctx = \n\
+ let dir_with_loc fname lineno dir ctx : unit = \n\
   __dir_fname := fname; __dir_lineno := lineno; \n\
    try dir ctx with e -> \n\
-     ( codegen_error fname lineno (msg_of_exn e) \n\
+     ( output_codegen_error fname lineno (msg_of_exn e) \n\
+     ; if Printexc.backtrace_status () then Printexc.print_backtrace stderr\n\
      ; exit 1 \n\
      ) \n\
  ;; \n\
+ let make_body bodycode = (!__dir_fname, !__dir_lineno, bodycode);;\n\
+ let dir_struc_linedir () = Struc.linedir !__dir_fname !__dir_lineno;;\n\
 "
 
 let codegen_module = "proj-build/internal/common/codegen.ml.module"
@@ -190,15 +224,18 @@ let do_stage_multi ?(pkgs = []) ~mlt ~pre ~post ~outs () =
   else if has_dups_by snd
   then invalid_arg "staging: duplicate output file names"
   else
-  let pkgs = "cadastr" :: pkgs in
+  let pkgs = "cadastr" :: "pprint" :: pkgs in
   let (tmpfn, out_ch) = Filename.open_temp_file
     ~mode:[Open_binary] "stage" ".ml" in
-  output_string out_ch (prepare_output outs);
   copy_ml_to_channel ~out_ch codegen_module;
-  output_string out_ch "open Codegen;;\n";
+  output_string out_ch
+    "open Codegen;; open Cg2;; module Mlt = Codegen.Cg1.Mlt;;\n";
+  output_string out_ch (prepare_output outs);
   output_string out_ch dir_with_loc;
-  output_string out_ch Cg.dummy_line_directive;
-  output_string out_ch & Cg.Struc.expr "__mlt_filename" & Cg.Lit.string mlt;
+  output_string out_ch & Cg.Implem.to_string [Cg.Struc.linedir "_staging_" 0];
+  output_string out_ch &
+    Cg.Implem.to_string &
+    [ Cg.Struc.expr "__mlt_filename" & Cg.Expr.string mlt ];
   copy_mls_to_channel ~out_ch ~files:pre;
   output_string out_ch mlt_typedefs;
   output_mlt ~out_ch (datadef_of_mlt mlt (* 1 (Filew.file_lines mlt) *) );

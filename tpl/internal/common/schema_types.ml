@@ -10,9 +10,9 @@ let tag = " v.1 (" ^ Migrate_types.all_types_tag ^ ")"
 type type_desc =
   { ty_name : string
   ; ty_ml_name : string
-  ; mutable ty_pg_of_string : string option
-  ; mutable ty_pg_to_string : string option
-  ; mutable ty_pg_ddl : string option
+  ; mutable ty_pg_of_string : body option
+  ; mutable ty_pg_to_string : body option
+  ; mutable ty_pg_ddl : body option
   ; mutable ty_parent_type : type_desc option
   }
 

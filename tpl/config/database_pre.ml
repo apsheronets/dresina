@@ -3,7 +3,7 @@ type context = string option ref
 open Cd_All
 open Mlt
 
-let connection1b = string_args1 & fun db_kind body ctx ->
+let connection1b = string_args1 & fun db_kind (fname, lineno, bodycode) ctx ->
   if db_kind <> "pg"
   then failwith "only 'pg' (postgresql) is supported now"
   else
@@ -12,6 +12,10 @@ let connection1b = string_args1 & fun db_kind body ctx ->
                  'environments' are not supported now"
   else
   ctx := Some begin Printf.sprintf
-    "let register () = Database.register\n%s\n();;\n"
-      body
+    "let register () = Database.register\n\
+     %s\
+     %s\n\
+     ();;\n"
+    (line_directive fname lineno)
+    bodycode
   end
