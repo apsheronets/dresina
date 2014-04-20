@@ -758,6 +758,8 @@ let to_form cols : struc_item list =
   let names_patt = Patt.tuple & List.map Patt.lid col_names in
   let __add_errors = expr_lid "__add_errors"
   and __arg = expr_lid "__arg" in
+  let fv_typed e = Expr.constr "Form_field_typed" [e]
+  and fv_string s = Expr.constr "Form_field_string" [s] in
   let pre_body : let_ins =
     Let_in.make (Patt.lid "__add_errors")
       (Expr.call_mod ["Forms_internal"] "errors_of_exn_opt"
@@ -772,28 +774,19 @@ let to_form cols : struc_item list =
            , Expr.tuple begin
              List.map
                (fun c ->
-                  let to_str_func = pg_col_to_string c in
-                  let f = Expr.meth (expr_lid "obj") c.cdc_name [] in
-                  if c.cdc_nullable
-                  then Expr.match_ f
-                    [ (Patt.constr "None" [], Expr.string "")
-                    ; ( Patt.(constr "Some" [lid "x"])
-                      , to_str_func & expr_lid "x"
-                      )
-                    ]
-                  else to_str_func f
+                  fv_typed & Expr.meth (expr_lid "obj") c.cdc_name []
                )
                cols
              end
            )
          ; ( Patt.poly "`New" []
            , Expr.tuple &
-             List.map (fun _ -> Expr.string "") col_names
+             List.map (fun _ -> fv_string & Expr.string "") col_names
            )
          ; ( Patt.(poly "`Params" [lid "m"])
            , Expr.tuple begin
              List.map
-               (fun cn -> Expr.call "strmap_find_or"
+               (fun cn -> fv_string & Expr.call "strmap_find_or"
                   [ Expr.string (self_model_name ^ "." ^ cn)
                   ; Expr.string ""
                   ; expr_lid "m"
@@ -824,10 +817,28 @@ let to_form cols : struc_item list =
     )
     @
     (List.map
-       (fun cn ->
+       (fun c ->
+          let cn = c.cdc_name in
           Class.method_ cn [] &
           Expr.object_
-            [ Class.method_ "v" [] (expr_lid cn)
+            [ Class.method_
+                "v" []
+                ~ret_typ:(Typ.(param (prim "form_field") [col_ml_opt_type c]))
+                (expr_lid cn)
+            ; Class.method_ "to_form" [Patt.lid "x"] begin
+                let ex = Expr.lid "x" in
+                let to_str_func = pg_col_to_string c in
+                if c.cdc_nullable
+                then
+                  Expr.match_ ex
+                    [ (Patt.constr "None" [], Expr.string "")
+                    ; ( Patt.(constr "Some" [lid "y"])
+                      , to_str_func & expr_lid "y"
+                      )
+                    ]
+                else
+                  to_str_func ex
+              end
             ; Class.method_ "form_name" [] &
                 Expr.string & self_model_name ^ "." ^ cn
             ; Class.val_ "errors" &
@@ -842,7 +853,7 @@ let to_form cols : struc_item list =
             ; Class.method_ "errors" [] & expr_lid "errors"
             ]
        )
-       col_names
+       cols
     )
   in
   [ Struc.class_ "to_form" Patt.([opt "exn" ; lid "__arg"])

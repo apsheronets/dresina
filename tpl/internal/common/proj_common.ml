@@ -183,7 +183,14 @@ let single_of_coll c =
     | Some x -> x
   )
 
+type 'a form_field =
+| Form_field_typed of 'a
+| Form_field_string of string
+
 let id_of_string = Int64.of_string
 let string_of_id = Int64.to_string
+let id_of_form_field = function
+| Form_field_typed id -> id
+| Form_field_string s -> id_of_string s  (* it may fail, yes. *)
 
 module BitArray = BitArray

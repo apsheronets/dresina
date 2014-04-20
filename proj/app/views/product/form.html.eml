@@ -1,4 +1,4 @@
-% form_for ~create:Route.Product_controller.Create.path ~edit:(lazy (Route.Product_controller.Update.path ~id:(id_of_string env#product#id#v))) env#product buf begin fun f m ->
+% form_for ~create:Route.Product_controller.Create.path ~edit:(lazy (Route.Product_controller.Update.path ~id:(id_of_form_field env#product#id#v))) env#product buf begin fun f m ->
 
   % if m#all_errors <> "" then begin
     <p>Errors: <%= m#all_errors %></p>

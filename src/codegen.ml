@@ -3,8 +3,8 @@ open Strings.Latin1
 open Printf
 
 let linedirs = true
-let linedirs = false
 (*
+let linedirs = false
 *)
 
 let failwith fmt = Printf.ksprintf Pervasives.failwith fmt
@@ -726,7 +726,8 @@ module Class
  :
   sig
     val val_ : ?mut:bool -> lid -> ?typ:typ -> expr -> class_field
-    val method_ : ?pvt:bool -> lid -> patt list -> expr -> class_field
+    val method_ : ?pvt:bool -> lid -> patt list -> ?ret_typ:typ
+                  -> expr -> class_field
   end
 
 module Typ
@@ -894,7 +895,7 @@ and expr =
   | Eascribe of expr * typ
 and class_field =
   | CFval of lid * val_mutable * typ option * expr
-  | CFmethod of lid * method_private * patt list * expr
+  | CFmethod of lid * method_private * patt list * typ option * expr
 and typ =
   | Tprim of mod_path * lid
   | Tparam of typ * typ list
@@ -1042,8 +1043,9 @@ module Class
   struct
     let val_ ?(mut=false) lid ?typ expr =
       CFval (I.lid lid, (if mut then Vmutable else Vimmutable), typ, expr)
-    let method_ ?(pvt=false) lid args expr =
-      CFmethod (I.lid lid, (if pvt then Mprivate else Mpublic), args, expr)
+    let method_ ?(pvt=false) lid args ?ret_typ expr =
+      CFmethod
+        (I.lid lid, (if pvt then Mprivate else Mpublic), args, ret_typ, expr)
   end
 
 module Let_in
@@ -1603,7 +1605,7 @@ module Print
           (h^^ !^" = " ^^ align bodydoc)
         end
         ^^h
-    | CFmethod (l, pvt, args, body) ->
+    | CFmethod (l, pvt, args, opt_typ, body) ->
         let argdocs = List.map (patt pp_out false) args
         and bodydoc = expr ep_out false body in
         begin group &
@@ -1613,6 +1615,10 @@ module Print
         ifflat
           (concat & List.map (fun a -> a ^^ space) argdocs)
           (nest 2 & concat & List.map (fun a -> a ^^ break 1) argdocs) ^^
+        (match opt_typ with
+         | None -> empty
+         | Some t -> !^": " ^^ typ tp_out false t ^^ space
+        ) ^^
         !^"=" ^^
         ifflat (space ^^ bodydoc) (h^^ !^"  " ^^ align bodydoc)
         end
